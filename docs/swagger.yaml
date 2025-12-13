@@ -1,0 +1,63 @@
+basePath: /api
+host: localhost:8082
+info:
+  contact: {}
+  description: 这是一个用于管理多个 Etsy 店铺的自动化系统 API
+  title: Etsy 店群管理系统 API
+  version: "1.0"
+paths:
+  /api/auth/callback:
+    get:
+      consumes:
+      - application/json
+      description: 接收 Etsy 返回的 code 和 state，换取 Token 并入库
+      parameters:
+      - description: 授权码
+        in: query
+        name: code
+        required: true
+        type: string
+      - description: 安全校验码
+        in: query
+        name: state
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 授权成功信息
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Etsy 授权回调
+      tags:
+      - Auth (授权模块)
+  /auth/login:
+    get:
+      consumes:
+      - application/json
+      description: 系统会自动分配一个负载最低的开发者账号，并生成 OAuth 授权跳转链接
+      produces:
+      - application/json
+      responses:
+        "302":
+          description: Redirect to Etsy
+          schema:
+            type: string
+        "503":
+          description: 资源不足错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取 Etsy 授权链接
+      tags:
+      - Auth (授权模块)
+swagger: "2.0"
