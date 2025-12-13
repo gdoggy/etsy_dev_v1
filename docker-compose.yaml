@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: etsy_pg_dev
+    restart: always
+    environment:
+      POSTGRES_USER: etsy_admin
+      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: etsy_farm
+    ports:
+      # docker 5432 映射到 Mac 的 5432
+      - "5432:5432"
+    volumes:
+      # 数据持久化
+      - pg_data:/var/lib/postgresql/data
+
+volumes:
+  pg_data:

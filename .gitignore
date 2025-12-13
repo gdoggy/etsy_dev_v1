@@ -1,0 +1,28 @@
+# --- 操作系统文件 (Mac) ---
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# --- IDE 配置文件 (GoLand/JetBrains) ---
+.idea/
+*.iml
+
+# --- Go 编译产物 ---
+etsy_dev
+etsy_dev_test
+*.exe
+*.test
+*.out
+
+# --- Docker 挂载数据 ---
+# 这一步非常重要！不要把本地数据库的数据文件夹上传
+pg_data/
+
+# --- 敏感配置文件 ---
+# 即使现在没用，也要先占位，防止以后手滑
+config.yaml
+.env
+secret.json
+
+# --- 日志文件 ---
+*.log
