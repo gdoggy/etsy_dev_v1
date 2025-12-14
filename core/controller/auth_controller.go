@@ -3,6 +3,7 @@ package controller
 import (
 	"etsy_dev_v1_202512/core/service"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -17,26 +18,40 @@ func NewAuthController(s *service.AuthService) *AuthController {
 
 // LoginHandler
 // @Summary 获取 Etsy 授权链接
-// @Description 系统会自动分配一个负载最低的开发者账号，并生成 OAuth 授权跳转链接
+// @Description 为指定的预置店铺生成授权链接，并生成 OAuth 授权跳转链接
 // @Tags Auth (授权模块)
 // @Accept JSON
 // @Produce JSON
+// @Param shop_id query int true "预置的店铺 ID (Database Primary Key)"
 // @Success 302 {string} string "Redirect to Etsy"
 // @Failure 503 {object} map[string]string "资源不足错误"
 // @Router /auth/login [get]
 func (ctrl *AuthController) LoginHandler(c *gin.Context) {
-	// 调用业务逻辑
-	url, err := ctrl.AuthService.GenerateLoginURL()
+	// 1. 获取 shop_id
+	shopIDStr := c.Query("shop_id")
+	if shopIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少 shop_id 参数"})
+		return
+	}
+
+	// 转为 uint
+	id, err := strconv.Atoi(shopIDStr)
 	if err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"error":  "无法生成授权链接",
+		c.JSON(http.StatusBadRequest, gin.H{"error": "shop_id 必须是数字"})
+		return
+	}
+
+	// 2. 调用 Service (传入 uint 类型的 shopID)
+	url, err := ctrl.AuthService.GenerateLoginURL(uint(id))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":  "生成失败",
 			"detail": err.Error(),
 		})
 		return
 	}
 
-	// 直接重定向跳转到 Etsy，或者返回 URL 给前端让前端跳
-	// 这里演示返回 JSON 给前端（更符合前后端分离）
+	// 返回 JSON 给前端，由于网络限制，前端只能生成链接不能重定向，实际使用时可以复制链接到指纹浏览器手动跳转
 	c.JSON(http.StatusOK, gin.H{
 		"message":  "获取成功",
 		"auth_url": url,

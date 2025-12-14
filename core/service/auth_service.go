@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"etsy_dev_v1_202512/core/model"
@@ -15,51 +16,69 @@ import (
 
 // 业务常量
 const (
-	MaxShopsPerAdapter = 3 // 风控：1个开发账号最多带3个店
 	// CallbackURL 必须与 Etsy 后台填写的完全一致
-	CallbackURL = "http://localhost:8080/api/auth/callback"
+	//CallbackURL = "http://localhost:8080/api/auth/callback"
+	CallbackURL = "https://elizabet-avian-glenna.ngrok-free.dev/api/auth/callback"
 )
 
 type AuthService struct {
-	AdapterRepo *repository.AdapterRepository
-	ShopRepo    *repository.ShopRepository
+	ShopRepo *repository.ShopRepository
 }
 
 // NewAuthService 工厂方法
-func NewAuthService(ar *repository.AdapterRepository, sr *repository.ShopRepository) *AuthService {
-	return &AuthService{AdapterRepo: ar, ShopRepo: sr}
+func NewAuthService(sr *repository.ShopRepository) *AuthService {
+	return &AuthService{ShopRepo: sr}
 }
 
-// GenerateLoginURL 生成授权链接 (核心风控逻辑)
-func (s *AuthService) GenerateLoginURL() (string, error) {
-	// 1. 智能调度：找一个没满员的 Adapter
-	adapter, err := s.AdapterRepo.FindAvailableAdapter(MaxShopsPerAdapter)
-	if err != nil {
-		return "", errors.New("资源紧张：没有可用的开发者账号 (所有账号已满员或未启用)")
+// GenerateLoginURL 生成授权链接
+func (s *AuthService) GenerateLoginURL(shopID uint) (string, error) {
+	// 1. 获取店铺预配置信息
+	var shop model.Shop
+	if err := s.ShopRepo.DB.Preload("Developer").First(&shop, shopID).Error; err != nil {
+		return "", errors.New("店铺未预置，请先在系统录入店铺信息")
 	}
 
-	// 2. 生成 PKCE 安全参数
+	// 2. 严格校验
+	if shop.DeveloperID == nil || shop.Developer.ID == 0 {
+		return "", errors.New("该店铺未绑定开发者账号，请检查配置")
+	}
+	// 校验 IP 一致性：如果不一致说明数据库脏了
+	if shop.ProxyID != shop.Developer.ProxyID {
+		return "", errors.New("IP不一致，请检查数据源")
+	}
+
+	// 3. 生成 PKCE 安全参数
 	verifier, _ := utils.GenerateRandomString(32)
 	challenge := utils.GenerateCodeChallenge(verifier)
 	state, _ := utils.GenerateRandomString(16)
 
-	// 3. 缓存 Verifier (重要：格式为 "verifier:adapter_id")
+	// 4. 缓存 Verifier (重要：格式为 "verifier:shop_id")
 	// 这样回调时我们就知道是哪个 Adapter 发起的请求
-	cacheValue := fmt.Sprintf("%s:%d", verifier, adapter.ID)
+	cacheValue := fmt.Sprintf("%s:%d", verifier, shop.ID)
 	utils.SetCache(state, cacheValue)
 
-	// 4. 拼接 Etsy 官方授权 URL
+	// 5. 拼接 Etsy 官方授权 URL
 	// 权限: 读取商品、读取交易、更新交易(发货)、读取店铺信息
 	scopes := "listings_r transactions_r transactions_w shops_r"
+	/*
+		etsy 官网案例：
+		   https://www.etsy.com/oauth/connect?
+		     response_type=code
+		     &redirect_uri=https://www.example.com/some/location
+		     &scope=transactions_r%20transactions_w
+		     &client_id=1aa2bb33c44d55eeeeee6fff&state=superstate
+		     &code_challenge=DSWlW2Abh-cf8CeLL8-g3hQ2WQyYdKyiu83u_s7nRhI
+		     &code_challenge_method=S256
+	*/
 	authURL := fmt.Sprintf(
 		"https://www.etsy.com/oauth/connect?response_type=code&client_id=%s&redirect_uri=%s&scope=%s&state=%s&code_challenge=%s&code_challenge_method=S256",
-		adapter.EtsyAppKey, CallbackURL, scopes, state, challenge,
+		shop.Developer.AppKey, CallbackURL, scopes, state, challenge,
 	)
 
 	return authURL, nil
 }
 
-// HandleCallback 处理 Etsy 回调，换取 Token -> 查 User -> 查 Shop -> 入库
+// HandleCallback 处理 Etsy 回调，解析 State -> 找到预置 Shop -> 组装 Proxy -> 换 Token -> 补全信息 -> 更新入库
 func (s *AuthService) HandleCallback(code, state string) (*model.Shop, error) {
 	// 1. 校验 State 并取出缓存
 	cachedVal, exists := utils.GetCache(state)
@@ -67,61 +86,85 @@ func (s *AuthService) HandleCallback(code, state string) (*model.Shop, error) {
 		return nil, errors.New("授权超时或 State 无效，请重新发起")
 	}
 
-	// 2. 解析缓存 "verifier:adapter_id"
-	var verifier string
-	var adapterID uint
-	_, err := fmt.Sscanf(cachedVal, "%s:%d", &verifier, &adapterID)
-	if err != nil {
-		return nil, errors.New("缓存数据损坏")
+	// 2. 解析缓存 "verifier:shop_id"
+	parts := strings.Split(cachedVal, ":")
+
+	// 简单的格式校验
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("缓存数据格式错误，预期 'verifier:shopID'，实际: %s", cachedVal)
 	}
 
-	// 3. 查出 Adapter 详情 (为了拿 AppKey 和 Proxy)
-	adapter, err := s.AdapterRepo.FindByID(adapterID)
+	verifier := parts[0]
+
+	// 将字符串转为数字
+	shopIDInt, err := strconv.Atoi(parts[1])
 	if err != nil {
-		return nil, errors.New("找不到对应的 Adapter 记录")
+		return nil, fmt.Errorf("缓存中的 ShopID 无效: %v", err)
+	}
+	shopID := uint(shopIDInt)
+
+	// 3. 查出预置的 Shop
+	var shop model.Shop
+	if err := s.ShopRepo.DB.Preload("Proxy").Preload("Developer").First(&shop, shopID).Error; err != nil {
+		return nil, errors.New("未找到对应的店铺预置信息")
 	}
 
-	// 4. 发起 HTTP 请求换取 Token
-	// 注意：这里使用了 Adapter 绑定的专属 Proxy，防关联！
-	client := resty.New().SetProxy(adapter.ProxyURL)
+	// 4. 严谨校验配置完整性
+	if shop.Proxy.ID == 0 {
+		return nil, errors.New("该店铺未配置代理 IP")
+	}
+	if shop.Developer.ID == 0 || shop.Developer.AppKey == "" {
+		return nil, errors.New("该店铺未绑定开发者账号或 AppKey 缺失")
+	}
+	// 5. 构造 HTTP 客户端 (使用 Proxy 表拼接 URL)
+	// 格式通常为: protocol://user:pass@ip:port
+	// 如果没有账号密码，格式为: protocol://ip:port
+	var proxyURL string
+	if shop.Proxy.Username != "" && shop.Proxy.Password != "" {
+		proxyURL = fmt.Sprintf("%s://%s:%s@%s:%s",
+			shop.Proxy.Protocol, shop.Proxy.Username, shop.Proxy.Password, shop.Proxy.IP, shop.Proxy.Port)
+	} else {
+		proxyURL = fmt.Sprintf("%s://%s:%s",
+			shop.Proxy.Protocol, shop.Proxy.IP, shop.Proxy.Port)
+	}
 
-	tokenResp, err := s.exchangeToken(client, adapter, code, verifier)
+	//client := resty.New().SetProxy(proxyURL)
+	fmt.Println(proxyURL)
+
+	client := resty.New().SetDebug(true)
+
+	// 6. 第一步：换取 Token
+	tokenResp, err := s.exchangeToken(client, shop.Developer.AppKey, code, verifier)
 	if err != nil {
 		return nil, err
 	}
 
-	// 5. 第二步：查询当前用户 ID (User ID) -- 🟢 新增逻辑
-	userID, err := s.fetchUserID(client, adapter.EtsyAppKey, tokenResp.AccessToken)
+	// 7. 第二步：查询当前用户 ID (User ID)
+	userID, err := s.fetchUserID(client, shop.Developer.AppKey, tokenResp.AccessToken)
 	if err != nil {
 		return nil, fmt.Errorf("获取 UserID 失败: %v", err)
 	}
 
-	// 6. 第三步：查询店铺信息 (Shop ID) -- 🟢 新增逻辑
-	shopInfo, err := s.fetchShopInfo(client, adapter.EtsyAppKey, tokenResp.AccessToken, userID)
+	// 8. 第三步：查询店铺信息 (Shop ID)
+	shopInfo, err := s.fetchShopInfo(client, shop.Developer.AppKey, tokenResp.AccessToken, userID)
 	if err != nil {
-		// 容错：如果用户还没开店，可能查不到 Shop，这时候不应该报错，而是存个空或者标记
-		// 这里为了严谨，如果没有店，我们可以先存个 0，或者直接报错提示用户先去开店
-		// 既然是 ERP，默认用户是卖家，这里报错提示更合理
-		return nil, fmt.Errorf("获取店铺失败(请确认该账号已在Etsy开通店铺): %v", err)
+		return nil, fmt.Errorf("获取店铺信息失败: %v", err)
 	}
 
-	// 7. 组装真实数据并入库
-	newShop := model.Shop{
-		AdapterID:      adapter.ID,
-		EtsyUserID:     strconv.FormatInt(userID, 10), // 存真实 UserID
-		EtsyShopID:     shopInfo.EtsyShopID,           // 存真实 ShopID
-		ShopName:       shopInfo.ShopName,             // 存真实店名
-		AccessToken:    tokenResp.AccessToken,
-		RefreshToken:   tokenResp.RefreshToken,
-		TokenExpiresAt: time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
+	// 9. 更新数据
+	shop.EtsyUserID = strconv.FormatInt(userID, 10)
+	shop.EtsyShopID = shopInfo.EtsyShopID
+	shop.ShopName = shopInfo.ShopName
+	shop.AccessToken = tokenResp.AccessToken
+	shop.RefreshToken = tokenResp.RefreshToken
+	shop.TokenExpiresAt = time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
+
+	// 入库保存
+	if err := s.ShopRepo.DB.Save(&shop).Error; err != nil {
+		return nil, fmt.Errorf("店铺入库失败: %v", err)
 	}
 
-	// 保存或更新 (如果该 EtsyShopID 已存在，应该更新 Token)
-	if err := s.ShopRepo.SaveOrUpdate(&newShop); err != nil {
-		return nil, err
-	}
-
-	return &newShop, nil
+	return &shop, nil
 }
 
 // 辅助结构体：Token 响应
@@ -133,22 +176,49 @@ type etsyTokenResp struct {
 }
 
 // 1. 换取 Token
-func (s *AuthService) exchangeToken(client *resty.Client, adapter *model.Adapter, code, verifier string) (*etsyTokenResp, error) {
+func (s *AuthService) exchangeToken(client *resty.Client, appKey, code, verifier string) (*etsyTokenResp, error) {
 	var tokenResp etsyTokenResp
+	fmt.Println("\n=========== Token Exchange Debug ===========")
+	fmt.Printf("1. Client ID (AppKey): [%s]\n", appKey)
+	fmt.Printf("2. Redirect URI:       [%s]\n", CallbackURL)
+	fmt.Printf("3. Code:               [%s...]\n", code[:10]) // 只打前10位
+	fmt.Printf("4. Verifier:           [%s]\n", verifier)
+	fmt.Println("============================================")
+
+	// 强制设置 Content-Type，防止有些代理或服务器识别不了
 	resp, err := client.R().
+		SetHeader("Content-Type", "application/x-www-form-urlencoded").
 		SetFormData(map[string]string{
 			"grant_type":    "authorization_code",
-			"client_id":     adapter.EtsyAppKey,
-			"redirect_uri":  CallbackURL,
+			"client_id":     appKey,
+			"redirect_uri":  CallbackURL, // ⚠️ 必须与 GenerateLoginURL 里的完全一致
 			"code":          code,
 			"code_verifier": verifier,
 		}).
 		SetResult(&tokenResp).
 		Post("https://api.etsy.com/v3/public/oauth/token")
 
-	if err != nil || tokenResp.Error != "" {
-		return nil, fmt.Errorf("换取 Token 失败: %s", resp.String())
+	// 🛠️ 调试：打印最原始的响应结果
+	fmt.Println("\n=========== Etsy Response Debug ===========")
+	fmt.Printf("Status Code: %d\n", resp.StatusCode())
+	fmt.Printf("Raw Body:    %s\n", resp.String())
+	fmt.Printf("Error Obj:   %+v\n", tokenResp)
+	fmt.Println("===========================================")
+
+	if err != nil {
+		return nil, fmt.Errorf("网络请求发送失败: %v", err)
 	}
+
+	// 如果状态码不是 200，说明 Etsy 拒绝了，无论有没有 error 字段都算失败
+	if resp.StatusCode() != 200 {
+		return nil, fmt.Errorf("Etsy 拒绝授权 (Status %d): %s", resp.StatusCode(), resp.String())
+	}
+
+	// 如果 Etsy 返回了业务逻辑错误
+	if tokenResp.Error != "" {
+		return nil, fmt.Errorf("Etsy 业务错误: %s", tokenResp.Error)
+	}
+
 	return &tokenResp, nil
 }
 
@@ -170,43 +240,44 @@ func (s *AuthService) fetchUserID(client *resty.Client, appKey, accessToken stri
 		return 0, err
 	}
 	if res.UserID == 0 {
-		return 0, fmt.Errorf("响应异常: %s", resp.String())
+		return 0, fmt.Errorf("响应异常，未获取到 UserID: %s", resp.String())
 	}
 	return res.UserID, nil
 }
 
 // 3. 获取 Shop Info
 func (s *AuthService) fetchShopInfo(client *resty.Client, appKey, accessToken string, userID int64) (*model.Shop, error) {
-	// Etsy 返回的是一个列表
-	type shopNode struct {
+	type etsyShopResp struct {
 		ShopID   int64  `json:"shop_id"`
 		ShopName string `json:"shop_name"`
+		UserID   int64  `json:"user_id"`
 	}
-	type shopListResp struct {
-		Count   int        `json:"count"`
-		Results []shopNode `json:"results"`
-	}
-	var res shopListResp
+
+	var res etsyShopResp
 
 	url := fmt.Sprintf("https://api.etsy.com/v3/application/users/%d/shops", userID)
-	_, err := client.R().
+
+	resp, err := client.R().
 		SetHeader("x-api-key", appKey).
 		SetHeader("Authorization", "Bearer "+accessToken).
 		SetResult(&res).
 		Get(url)
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("请求 Etsy 失败: %v", err)
 	}
 
-	// 检查该用户是否有店铺
-	if res.Count == 0 || len(res.Results) == 0 {
-		return nil, errors.New("该用户名下没有店铺")
+	if res.ShopName == "" {
+		return nil, fmt.Errorf("解析失败或响应为空。原始返回: %s", resp.String())
 	}
 
-	// 返回第一个店铺的信息
+	// 安全类型转换 (interface{} -> string)
+	shopIDStr := strconv.FormatInt(res.ShopID, 10)
+	userIDStr := strconv.FormatInt(res.UserID, 10)
+
 	return &model.Shop{
-		EtsyShopID: strconv.FormatInt(res.Results[0].ShopID, 10),
-		ShopName:   res.Results[0].ShopName,
+		EtsyShopID: shopIDStr,
+		EtsyUserID: userIDStr,
+		ShopName:   res.ShopName,
 	}, nil
 }

@@ -16,7 +16,7 @@ func main() {
 
 	// 2. 测试模型迁移 (看看 entity.go 写得对不对)
 	log.Println(">>> 正在验证表结构...")
-	err := db.AutoMigrate(&model.Adapter{}, &model.Shop{})
+	err := db.AutoMigrate(&model.Shop{})
 	if err != nil {
 		log.Fatalf("❌ 模型定义有误: %v", err)
 	}
