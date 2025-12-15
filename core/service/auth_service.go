@@ -17,7 +17,7 @@ import (
 // 业务常量
 const (
 	// CallbackURL 必须与 Etsy 后台填写的完全一致
-	//CallbackURL = "http://localhost:8080/api/auth/callback"
+	// CallbackURL = "http://localhost:8080/api/auth/callback"
 	CallbackURL = "https://elizabet-avian-glenna.ngrok-free.dev/api/auth/callback"
 )
 
@@ -109,49 +109,29 @@ func (s *AuthService) HandleCallback(code, state string) (*model.Shop, error) {
 		return nil, errors.New("未找到对应的店铺预置信息")
 	}
 
-	// 4. 严谨校验配置完整性
-	if shop.Proxy.ID == 0 {
-		return nil, errors.New("该店铺未配置代理 IP")
-	}
-	if shop.Developer.ID == 0 || shop.Developer.AppKey == "" {
-		return nil, errors.New("该店铺未绑定开发者账号或 AppKey 缺失")
-	}
-	// 5. 构造 HTTP 客户端 (使用 Proxy 表拼接 URL)
-	// 格式通常为: protocol://user:pass@ip:port
-	// 如果没有账号密码，格式为: protocol://ip:port
-	var proxyURL string
-	if shop.Proxy.Username != "" && shop.Proxy.Password != "" {
-		proxyURL = fmt.Sprintf("%s://%s:%s@%s:%s",
-			shop.Proxy.Protocol, shop.Proxy.Username, shop.Proxy.Password, shop.Proxy.IP, shop.Proxy.Port)
-	} else {
-		proxyURL = fmt.Sprintf("%s://%s:%s",
-			shop.Proxy.Protocol, shop.Proxy.IP, shop.Proxy.Port)
-	}
+	// 4. 工厂调用 构建专用网络客户端
+	client := utils.NewProxiedClient(&shop.Proxy)
 
-	//client := resty.New().SetProxy(proxyURL)
-	fmt.Println(proxyURL)
-
-	client := resty.New().SetDebug(true)
-
-	// 6. 第一步：换取 Token
+	// 5. 换取 Token
 	tokenResp, err := s.exchangeToken(client, shop.Developer.AppKey, code, verifier)
 	if err != nil {
-		return nil, err
+		s.updateTokenStatus(&shop, model.TokenStatusInvalid)
+		return nil, fmt.Errorf("换取 Token 失败: %v", err)
 	}
 
-	// 7. 第二步：查询当前用户 ID (User ID)
+	// 6. 获取用户 ID (User ID)
 	userID, err := s.fetchUserID(client, shop.Developer.AppKey, tokenResp.AccessToken)
 	if err != nil {
 		return nil, fmt.Errorf("获取 UserID 失败: %v", err)
 	}
 
-	// 8. 第三步：查询店铺信息 (Shop ID)
+	// 7. 获取 ShopInfo
 	shopInfo, err := s.fetchShopInfo(client, shop.Developer.AppKey, tokenResp.AccessToken, userID)
 	if err != nil {
 		return nil, fmt.Errorf("获取店铺信息失败: %v", err)
 	}
 
-	// 9. 更新数据
+	// 8. 更新数据
 	shop.EtsyUserID = strconv.FormatInt(userID, 10)
 	shop.EtsyShopID = shopInfo.EtsyShopID
 	shop.ShopName = shopInfo.ShopName
@@ -178,32 +158,18 @@ type etsyTokenResp struct {
 // 1. 换取 Token
 func (s *AuthService) exchangeToken(client *resty.Client, appKey, code, verifier string) (*etsyTokenResp, error) {
 	var tokenResp etsyTokenResp
-	fmt.Println("\n=========== Token Exchange Debug ===========")
-	fmt.Printf("1. Client ID (AppKey): [%s]\n", appKey)
-	fmt.Printf("2. Redirect URI:       [%s]\n", CallbackURL)
-	fmt.Printf("3. Code:               [%s...]\n", code[:10]) // 只打前10位
-	fmt.Printf("4. Verifier:           [%s]\n", verifier)
-	fmt.Println("============================================")
-
 	// 强制设置 Content-Type，防止有些代理或服务器识别不了
 	resp, err := client.R().
 		SetHeader("Content-Type", "application/x-www-form-urlencoded").
 		SetFormData(map[string]string{
 			"grant_type":    "authorization_code",
 			"client_id":     appKey,
-			"redirect_uri":  CallbackURL, // ⚠️ 必须与 GenerateLoginURL 里的完全一致
+			"redirect_uri":  CallbackURL, // 必须与 GenerateLoginURL 里的完全一致
 			"code":          code,
 			"code_verifier": verifier,
 		}).
 		SetResult(&tokenResp).
 		Post("https://api.etsy.com/v3/public/oauth/token")
-
-	// 🛠️ 调试：打印最原始的响应结果
-	fmt.Println("\n=========== Etsy Response Debug ===========")
-	fmt.Printf("Status Code: %d\n", resp.StatusCode())
-	fmt.Printf("Raw Body:    %s\n", resp.String())
-	fmt.Printf("Error Obj:   %+v\n", tokenResp)
-	fmt.Println("===========================================")
 
 	if err != nil {
 		return nil, fmt.Errorf("网络请求发送失败: %v", err)
@@ -213,7 +179,6 @@ func (s *AuthService) exchangeToken(client *resty.Client, appKey, code, verifier
 	if resp.StatusCode() != 200 {
 		return nil, fmt.Errorf("Etsy 拒绝授权 (Status %d): %s", resp.StatusCode(), resp.String())
 	}
-
 	// 如果 Etsy 返回了业务逻辑错误
 	if tokenResp.Error != "" {
 		return nil, fmt.Errorf("Etsy 业务错误: %s", tokenResp.Error)
@@ -271,7 +236,6 @@ func (s *AuthService) fetchShopInfo(client *resty.Client, appKey, accessToken st
 		return nil, fmt.Errorf("解析失败或响应为空。原始返回: %s", resp.String())
 	}
 
-	// 安全类型转换 (interface{} -> string)
 	shopIDStr := strconv.FormatInt(res.ShopID, 10)
 	userIDStr := strconv.FormatInt(res.UserID, 10)
 
@@ -280,4 +244,57 @@ func (s *AuthService) fetchShopInfo(client *resty.Client, appKey, accessToken st
 		EtsyUserID: userIDStr,
 		ShopName:   res.ShopName,
 	}, nil
+}
+
+func (s *AuthService) RefreshAccessToken(shop *model.Shop) error {
+	// 1. 动态获取代理
+	client := utils.NewProxiedClient(&shop.Proxy)
+
+	// 2. 发起刷新请求
+	var tokenResp etsyTokenResp
+	resp, err := client.R().
+		SetFormData(map[string]string{
+			"grant_type":    "refresh_token",
+			"client_id":     shop.Developer.AppKey,
+			"refresh_token": shop.RefreshToken,
+		}).
+		SetResult(&tokenResp).
+		Post("https://api.etsy.com/v3/public/oauth/token")
+
+	// --- 3. 错误处理与状态流转 (关键逻辑) ---
+
+	// A. 网络层错误 (超时/DNS失败)
+	if err != nil {
+		// 策略：网络抖动不应该标记为 Token 失效，保持原状态，等待下一次 Cron 重试
+		return fmt.Errorf("网络层错误，保持状态不变: %v", err)
+	}
+
+	// B. 业务层错误 (Etsy 拒绝)
+	// 400 Bad Request (Invalid Grant) 或 401 Unauthorized 通常意味着 Refresh Token 已脏
+	if resp.StatusCode() != 200 || tokenResp.Error != "" {
+		// 策略：标记为 Invalid，前端看到这个状态会弹窗提示用户
+		s.updateTokenStatus(shop, model.TokenStatusInvalid)
+		return fmt.Errorf("刷新被拒，标记为失效: %s (Code: %d)", tokenResp.Error, resp.StatusCode())
+	}
+
+	// C. 成功
+	shop.AccessToken = tokenResp.AccessToken
+	shop.RefreshToken = tokenResp.RefreshToken
+	shop.TokenExpiresAt = time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
+	shop.TokenStatus = model.TokenStatusActive // 恢复为活跃
+
+	// 只更新 Token 相关字段
+	if err := s.ShopRepo.DB.Model(shop).
+		Select("access_token", "refresh_token", "token_expires_at", "token_status").
+		Updates(shop).Error; err != nil {
+		return fmt.Errorf("入库失败: %v", err)
+	}
+
+	return nil
+}
+
+// 辅助方法：只更新状态
+func (s *AuthService) updateTokenStatus(shop *model.Shop, status string) {
+	shop.TokenStatus = status
+	s.ShopRepo.DB.Model(shop).Update("token_status", status)
 }

@@ -1,7 +1,9 @@
 package database
 
 import (
+	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"gorm.io/driver/postgres"
@@ -12,12 +14,27 @@ import (
 // InitDB 初始化数据库连接
 // dsn: 数据库连接字符串
 // models: 需要自动建表/迁移的结构体指针
-func InitDB(dsn string, models ...interface{}) *gorm.DB {
+func InitDB(models ...interface{}) *gorm.DB {
 	// 配置 GORM 的日志模式，开发环境下打印所有 SQL，方便调试
 	dbLogger := logger.Default.LogMode(logger.Info)
 
+	host := getEnv("DB_HOST", "localhost")
+	user := getEnv("DB_USER", "etsy_admin")
+	password := getEnv("DB_PASSWORD", "1234")
+	dbname := getEnv("DB_NAME", "etsy_farm")
+	port := getEnv("DB_PORT", "5432")
+	timezone := getEnv("DB_TIMEZONE", "Asia/Shanghai")
+
+	// 2. 拼接 DSN (Data Source Name)
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=%s",
+		host, user, password, dbname, port, timezone)
+
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger: dbLogger,
+		NowFunc: func() time.Time {
+			location, _ := time.LoadLocation("Asia/Shanghai")
+			return time.Now().In(location)
+		},
 	})
 
 	if err != nil {
@@ -46,4 +63,11 @@ func InitDB(dsn string, models ...interface{}) *gorm.DB {
 	}
 
 	return db
+}
+
+func getEnv(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
 }

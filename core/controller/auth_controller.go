@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"etsy_dev_v1_202512/core/model"
 	"etsy_dev_v1_202512/core/service"
 	"net/http"
 	"strconv"
@@ -20,11 +21,11 @@ func NewAuthController(s *service.AuthService) *AuthController {
 // @Summary 获取 Etsy 授权链接
 // @Description 为指定的预置店铺生成授权链接，并生成 OAuth 授权跳转链接
 // @Tags Auth (授权模块)
-// @Accept JSON
-// @Produce JSON
+// @Accept json
+// @Produce json
 // @Param shop_id query int true "预置的店铺 ID (Database Primary Key)"
-// @Success 302 {string} string "Redirect to Etsy"
-// @Failure 503 {object} map[string]string "资源不足错误"
+// @Success 200 {string} string "点击按钮手动复制链接 url"
+// @Failure 400 {string} string "错误信息"
 // @Router /auth/login [get]
 func (ctrl *AuthController) LoginHandler(c *gin.Context) {
 	// 1. 获取 shop_id
@@ -62,12 +63,12 @@ func (ctrl *AuthController) LoginHandler(c *gin.Context) {
 // @Summary Etsy 授权回调
 // @Description 接收 Etsy 返回的 code 和 state，换取 Token 并入库
 // @Tags Auth (授权模块)
-// @Accept JSON
-// @Produce JSON
+// @Accept json
+// @Produce json
 // @Param code query string true "授权码"
 // @Param state query string true "安全校验码"
 // @Success 200 {object} map[string]interface{} "授权成功信息"
-// @Failure 400 {object} map[string]string "参数错误"
+// @Failure 400 {object} map[string]string "拒绝授权/参数错误"
 // @Router /api/auth/callback [get]
 func (ctrl *AuthController) CallbackHandler(c *gin.Context) {
 	code := c.Query("code")
@@ -99,5 +100,34 @@ func (ctrl *AuthController) CallbackHandler(c *gin.Context) {
 		"shop_name": shop.ShopName,
 		"shop_id":   shop.EtsyShopID,
 		"expire_at": shop.TokenExpiresAt,
+	})
+}
+
+// RefreshTokenHandler 手动强制刷新 Token
+// @Summary 刷新店铺 Token
+// @Param shop_id query int true "店铺 ID"
+func (ctrl *AuthController) RefreshTokenHandler(c *gin.Context) {
+	shopIDStr := c.Query("shop_id")
+	id, _ := strconv.Atoi(shopIDStr)
+
+	// 1. 查店铺
+	var shop model.Shop
+	// 需要 Preload Developer 来获取 AppKey
+	if err := ctrl.AuthService.ShopRepo.DB.Preload("Proxy").Preload("Developer").First(&shop, id).Error; err != nil {
+		c.JSON(404, gin.H{"error": "店铺不存在"})
+		return
+	}
+
+	// 2. 调用 Service 强制刷新
+	// 注意：虽然 Cron 里有这个逻辑，但 Controller 这里直接调用 Service 的方法也是合理的
+	err := ctrl.AuthService.RefreshAccessToken(&shop)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "刷新失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"message":    "Token 刷新成功",
+		"new_expiry": shop.TokenExpiresAt.Format("2006-01-02 15:04:05"),
 	})
 }

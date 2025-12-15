@@ -1,20 +1,54 @@
 version: '3.8'
 
 services:
+  # --- Go 应用服务 ---
+  app:
+    container_name: etsy_dev_v1_202512
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # 如果你要直接推送，建议这里写上完整的镜像名 (例如: your-dockerhub-user/etsy-api:v1)
+    # image: your-registry/etsy-api:latest
+    ports:
+      - "8080:8080"
+    environment:
+      # 这里的 host 必须填下面的 service 名字 'db'
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=etsy_admin
+      - DB_PASSWORD=1234
+      - DB_NAME=etsy_farm
+      - DB_TIMEZONE=Asia/Shanghai
+    depends_on:
+      - db
+    networks:
+      - etsy-net
+    restart: on-failure
+
+  # --- PostgreSQL 数据库服务 ---
   db:
     image: postgres:16-alpine
     container_name: etsy_pg_dev
     restart: always
     environment:
-      POSTGRES_USER: etsy_admin
-      POSTGRES_PASSWORD: 1234
-      POSTGRES_DB: etsy_farm
+      - POSTGRES_USER=etsy_admin
+      - POSTGRES_PASSWORD=1234
+      - POSTGRES_DB=etsy_farm
+      - DB_TIMEZONE=Asia/Shanghai
     ports:
       # docker 5432 映射到 Mac 的 5432
       - "5432:5432"
     volumes:
-      # 数据持久化
+      # 数据持久化：确保容器删除后数据还在
       - pg_data:/var/lib/postgresql/data
+    networks:
+      - etsy-net
 
+# --- 网络定义 ---
+networks:
+  etsy-net:
+    driver: bridge
+
+# --- 数据卷定义 ---
 volumes:
   pg_data:

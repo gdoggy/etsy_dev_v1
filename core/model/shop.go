@@ -6,15 +6,21 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	TokenStatusActive  = "active"       // 正常
+	TokenStatusExpired = "expired"      // 已过期 (待刷新)
+	TokenStatusInvalid = "auth_invalid" // 彻底失效 (需要人工重新授权)
+)
+
 type Shop struct {
 	gorm.Model
 	// 基础信息
 	// shopID 店铺身份
 	EtsyShopID string `gorm:"unique;size:50"`
 	// userID 店主/用户 ID
-	EtsyUserID string `gorm:"size:50"`
-	ShopName   string `gorm:"size:100"`
-
+	EtsyUserID   string `gorm:"size:50"`
+	ShopName     string `gorm:"size:100"`
+	CurrencyCode string `gorm:"default:USD"`
 	// 代理关系
 	ProxyID uint  `gorm:"not null;index"`
 	Proxy   Proxy `gorm:"foreignkey:ProxyID"`
@@ -23,6 +29,8 @@ type Shop struct {
 	Developer   Developer `gorm:"foreignkey:DeveloperID"`
 
 	// API Token
+	// 周期检测 token 是否过期
+	TokenStatus    string `gorm:"size:20;default:'active';index"`
 	AccessToken    string `gorm:"type:text"`
 	RefreshToken   string `gorm:"type:text"`
 	TokenExpiresAt time.Time
@@ -40,6 +48,10 @@ type Shop struct {
 	// 3. 财务数据
 	// 含义：每个 shop 对应多个 finance 资金条目
 	// Finances []Finance `gorm:"foreignKey:ShopID"`
+
+	// 4. 权限关联
+	// 这里的 many 2 many 指向的是逻辑关系，底层走 shop_members 表
+	Members []SysUser `gorm:"many2many:shop_members;" json:"-"`
 }
 
 type ShopAccount struct {

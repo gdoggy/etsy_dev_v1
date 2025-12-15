@@ -53,7 +53,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "参数错误",
+                        "description": "拒绝授权/参数错误",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -64,9 +64,54 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/products": {
+            "get": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Product"
+                ],
+                "summary": "获取指定店铺的商品列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "店铺 ID",
+                        "name": "shop_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码 (默认1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页数量 (默认20)",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/etsy_dev_v1_202512_core_view.ProductListResp"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "get": {
-                "description": "系统会自动分配一个负载最低的开发者账号，并生成 OAuth 授权跳转链接",
+                "description": "为指定的预置店铺生成授权链接，并生成 OAuth 授权跳转链接",
                 "consumes": [
                     "application/json"
                 ],
@@ -77,22 +122,105 @@ const docTemplate = `{
                     "Auth (授权模块)"
                 ],
                 "summary": "获取 Etsy 授权链接",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "预置的店铺 ID (Database Primary Key)",
+                        "name": "shop_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
                 "responses": {
-                    "302": {
-                        "description": "Redirect to Etsy",
+                    "200": {
+                        "description": "点击按钮手动复制链接 url",
                         "schema": {
                             "type": "string"
                         }
                     },
-                    "503": {
-                        "description": "资源不足错误",
+                    "400": {
+                        "description": "错误信息",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "type": "string"
                         }
                     }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "etsy_dev_v1_202512_core_view.ProductListResp": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer",
+                    "example": 0
+                },
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/etsy_dev_v1_202512_core_view.ProductResp"
+                    }
+                },
+                "message": {
+                    "type": "string",
+                    "example": "success"
+                },
+                "page": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "page_size": {
+                    "type": "integer",
+                    "example": 20
+                },
+                "total": {
+                    "type": "integer",
+                    "example": 100
+                }
+            }
+        },
+        "etsy_dev_v1_202512_core_view.ProductResp": {
+            "type": "object",
+            "properties": {
+                "currency": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "img_url": {
+                    "description": "暂时留空，后续可以加",
+                    "type": "string"
+                },
+                "last_updated": {
+                    "type": "string"
+                },
+                "listing_id": {
+                    "description": "这里的 ID 转字符串防止前端大数精度丢失",
+                    "type": "string"
+                },
+                "price": {
+                    "description": "组合字段：直接给前端一个浮点数价格",
+                    "type": "number"
+                },
+                "quantity": {
+                    "type": "integer"
+                },
+                "state": {
+                    "type": "string"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "title": {
+                    "type": "string"
+                },
+                "views": {
+                    "type": "integer"
                 }
             }
         }
@@ -101,12 +229,12 @@ const docTemplate = `{
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "1.0",
-	Host:             "localhost:8082",
-	BasePath:         "/api",
+	Version:          "",
+	Host:             "",
+	BasePath:         "",
 	Schemes:          []string{},
-	Title:            "Etsy 店群管理系统 API",
-	Description:      "这是一个用于管理多个 Etsy 店铺的自动化系统 API",
+	Title:            "",
+	Description:      "",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

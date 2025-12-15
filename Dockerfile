@@ -1,35 +1,56 @@
 # ---
-# 开发环境 Mac (ARM64)，生产环境 Linux (AMD64/x86)，采用多阶段构建 (Multi-stage Build)
-# ---
-
-# ---
 # 第一阶段：builder
 # ---
+# 显式指定 --platform=$BUILDPLATFORM 利用本地架构缓存，但交叉编译目标架构
+# 这里为了稳妥，让 Go 自己处理交叉编译
 FROM golang:1.24-alpine AS builder
-# 环境变量
-ENV GO111MODULE=on \
-    CGO_ENABLED=0 \
+
+# 1. 设置国内代理
+ENV GOPROXY=https://goproxy.cn,direct
+
+# 2. 环境变量
+# CGO_ENABLED=0 确保生成静态链接二进制
+ENV CGO_ENABLED=0 \
     GOOS=linux \
     GOARCH=amd64
-# DOCKER工作目录
+
 WORKDIR /app
-# 依赖
+
+# 3. 缓存依赖
 COPY go.mod go.sum ./
 RUN go mod download
 
+# 4. 复制编译
 COPY . .
-RUN go build -ldflags="-w -s" -o etsy_dev .
-
+# -ldflags="-w -s" 去掉调试信息，减小体积
+RUN go build -ldflags="-w -s" -o etsy_dev ./cmd/main.go
 
 # ---
 # 第二阶段：runner
 # ---
-FROM alpine:latest
+# 关键修改：在这里建议显式指定平台，防止在 Mac 上拉取了 ARM 版 Alpine 导致不兼容
+# 或者在 docker build 命令中指定（见下文）
+FROM --platform=linux/amd64 alpine:latest
+
 LABEL authors="vip"
 
-# 安装证书
+# 5. 安装基础依赖
+# ca-certificates: HTTPS 请求必须
+# tzdata: 设置时区必须
 RUN apk --no-cache add ca-certificates tzdata
+
+# 设置时区为上海
+ENV TZ=Asia/Shanghai
+
 WORKDIR /root/
+
+# 6. 复制二进制文件
 COPY --from=builder /app/etsy_dev .
+
+# 7. [重要] 如果有配置文件需要复制
+# COPY --from=builder /app/.env .
+# COPY --from=builder /app/config.yaml .
+
 EXPOSE 8080
+
 CMD ["./etsy_dev"]
