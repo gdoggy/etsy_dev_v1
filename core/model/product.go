@@ -54,3 +54,28 @@ type Product struct {
 	LastModifiedTsz int64 `gorm:"default:0" json:"last_modified_tsz"`
 	EndingTsz       int64 `gorm:"default:0" json:"ending_tsz"`
 }
+
+// ProductVariant 商品变体
+// 对应 Etsy 的 Inventory 概念，处理如 "Red/L", "Blue/M" 的组合
+type ProductVariant struct {
+	gorm.Model
+
+	ProductID uint    `gorm:"index;not null" json:"product_id"`
+	Product   Product `gorm:"foreignKey:ProductID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
+
+	// --- Etsy 标识 ---
+	EtsyVariantID int64 `gorm:"index;default:0" json:"etsy_variant_id"`
+
+	// --- 核心属性 ---
+	// 组合属性，推荐存储 JSON 字符串，例如: [{"property_id":200, "value_id":1, "name":"Color", "value":"Red"}]
+	// 这样设计比单纯存 "Red" 更符合 Etsy API V3 的规范
+	PropertyValues string `gorm:"type:text;serializer:json" json:"property_values"`
+
+	// --- 销售数据 ---
+	Price    float64 `gorm:"not null" json:"price"`
+	Quantity int     `gorm:"not null" json:"quantity"`
+	Sku      string  `gorm:"size:100;index" json:"sku"` // SKU 加上索引方便查询
+
+	// --- 状态 ---
+	IsEnabled bool `gorm:"default:true" json:"is_enabled"`
+}
