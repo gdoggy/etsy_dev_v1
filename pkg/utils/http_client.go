@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"etsy_dev_v1_202512/core/model"
+	"etsy_dev_v1_202512/internal/core/model"
 	"time"
 
 	"github.com/go-resty/resty/v2"

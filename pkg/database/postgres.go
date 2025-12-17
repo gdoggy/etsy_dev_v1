@@ -54,8 +54,12 @@ func InitDB(models ...interface{}) *gorm.DB {
 	// 设置了连接可复用的最大时间
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
+	// 1. 确保启用 pg_trgm 扩展 (用于 GIN 索引模糊搜索)
+	db.Exec("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
+
 	log.Println("数据库连接成功 (Database Connected Successfully)")
 
+	// 2. 自动建表
 	if len(models) > 0 {
 		if err := db.AutoMigrate(models...); err != nil {
 			log.Fatalf("自动建表出错： %v", err)

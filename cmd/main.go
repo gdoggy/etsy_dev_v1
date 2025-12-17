@@ -1,12 +1,12 @@
 package main
 
 import (
-	"etsy_dev_v1_202512/core/controller"
-	"etsy_dev_v1_202512/core/model"
-	"etsy_dev_v1_202512/core/repository"
-	"etsy_dev_v1_202512/core/router"
-	"etsy_dev_v1_202512/core/service"
-	"etsy_dev_v1_202512/core/task"
+	"etsy_dev_v1_202512/internal/api/handler"
+	"etsy_dev_v1_202512/internal/core/model"
+	"etsy_dev_v1_202512/internal/core/service"
+	"etsy_dev_v1_202512/internal/repository"
+	"etsy_dev_v1_202512/internal/router"
+	"etsy_dev_v1_202512/internal/task"
 	"etsy_dev_v1_202512/pkg/database"
 	"log"
 
@@ -16,24 +16,36 @@ import (
 func main() {
 	// 1. 初始化数据库
 	db := database.InitDB(
-		&model.Proxy{},
-		&model.Developer{},
-		&model.Shop{},
-		&model.ShopAccount{},
-		&model.Product{},
+		// Manager
+		&model.SysUser{}, &model.ShopMember{},
+		// Account
+		&model.Proxy{}, &model.Developer{},
+		// Shop
+		&model.Shop{}, &model.ShopAccount{},
+		// Product
+		&model.Product{}, &model.ProductImage{}, &model.ProductVariant{},
 	)
+
+	aiConfig := service.AIConfig{
+		ApiKey:     "",
+		TextModel:  "",
+		ImageModel: "",
+		VideoModel: "",
+	}
 
 	// 2. 依赖注入 (层层组装)
 	// Repo 层
 	shopRepo := repository.NewShopRepo(db)
 
 	// Service 层
+	aiService := service.NewAIService(aiConfig)
+	storageService := service.NewStorageService()
 	authService := service.NewAuthService(shopRepo)
-	productService := service.NewProductService(shopRepo)
+	productService := service.NewProductService(shopRepo, aiService, storageService)
 
 	// Controller 层
-	authController := controller.NewAuthController(authService)
-	productController := controller.NewProductController(productService)
+	authController := handler.NewAuthController(authService)
+	productController := handler.NewProductController(productService)
 
 	// Task 层
 	tokenTask := task.NewTokenTask(shopRepo, authService)
@@ -47,6 +59,6 @@ func main() {
 
 	// 5. 启动服务
 	if err := r.Run(":8080"); err != nil {
-		log.Fatalf("❌ 服务启动失败: %v", err)
+		log.Fatalf("服务启动失败: %v", err)
 	}
 }

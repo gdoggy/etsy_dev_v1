@@ -34,7 +34,8 @@ services:
       - POSTGRES_USER=etsy_admin
       - POSTGRES_PASSWORD=1234
       - POSTGRES_DB=etsy_farm
-      - DB_TIMEZONE=Asia/Shanghai
+      - TZ=Asia/Shanghai      # 修改 Linux 容器系统时间
+      - PGTZ=Asia/Shanghai    # 修改 Postgres 默认服务时区
     ports:
       # docker 5432 映射到 Mac 的 5432
       - "5432:5432"

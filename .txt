@@ -1,1 +1,0 @@
-https://www.etsy.com/oauth/connect?response_type=code\u0026client_id=i0kg9uiwf7fajmq4jamiy3zr\u0026redirect_uri=http://localhost:8080/api/auth/callback\u0026scope=listings_r transactions_r transactions_w shops_r\u0026state=tOMFMV8amTdsffOq\u0026code_challenge=U-MRkxE8pgRb03J6P_qzyPTb-SBz3hUu0RL1SlTJlVc\u0026code_challenge_method=S256
