@@ -1,8 +1,8 @@
-package handler
+package controller
 
 import (
-	"etsy_dev_v1_202512/internal/core/model"
 	"etsy_dev_v1_202512/internal/core/service"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -10,14 +10,14 @@ import (
 )
 
 type AuthController struct {
-	AuthService *service.AuthService
+	authService *service.AuthService
 }
 
 func NewAuthController(s *service.AuthService) *AuthController {
-	return &AuthController{AuthService: s}
+	return &AuthController{authService: s}
 }
 
-// LoginHandler
+// Login
 // @Summary 获取 Etsy 授权链接
 // @Description 为指定的预置店铺生成授权链接，并生成 OAuth 授权跳转链接
 // @Tags Auth (授权模块)
@@ -27,7 +27,7 @@ func NewAuthController(s *service.AuthService) *AuthController {
 // @Success 200 {string} string "点击按钮手动复制链接 url"
 // @Failure 400 {string} string "错误信息"
 // @Router /auth/login [get]
-func (ctrl *AuthController) LoginHandler(c *gin.Context) {
+func (ctrl *AuthController) Login(c *gin.Context) {
 	// 1. 获取 shop_id
 	shopIDStr := c.Query("shop_id")
 	if shopIDStr == "" {
@@ -35,15 +35,15 @@ func (ctrl *AuthController) LoginHandler(c *gin.Context) {
 		return
 	}
 
-	// 转为 uint
-	id, err := strconv.Atoi(shopIDStr)
+	// 转为 int64
+	id, err := strconv.ParseInt(shopIDStr, 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "shop_id 必须是数字"})
 		return
 	}
 
-	// 2. 调用 Service (传入 uint 类型的 shopID)
-	url, err := ctrl.AuthService.GenerateLoginURL(uint(id))
+	// 2. 调用 Service (传入 int64 类型的 shopID)
+	url, err := ctrl.authService.GenerateLoginURL(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":  "生成失败",
@@ -59,7 +59,7 @@ func (ctrl *AuthController) LoginHandler(c *gin.Context) {
 	})
 }
 
-// CallbackHandler
+// Callback
 // @Summary Etsy 授权回调
 // @Description 接收 Etsy 返回的 code 和 state，换取 Token 并入库
 // @Tags Auth (授权模块)
@@ -70,7 +70,7 @@ func (ctrl *AuthController) LoginHandler(c *gin.Context) {
 // @Success 200 {object} map[string]interface{} "授权成功信息"
 // @Failure 400 {object} map[string]string "拒绝授权/参数错误"
 // @Router /api/auth/callback [get]
-func (ctrl *AuthController) CallbackHandler(c *gin.Context) {
+func (ctrl *AuthController) Callback(c *gin.Context) {
 	code := c.Query("code")
 	state := c.Query("state")
 	errParam := c.Query("error")
@@ -86,7 +86,7 @@ func (ctrl *AuthController) CallbackHandler(c *gin.Context) {
 	}
 
 	// 调用业务层换 Token
-	shop, err := ctrl.AuthService.HandleCallback(code, state)
+	shop, err := ctrl.authService.HandleCallback(c.Request.Context(), code, state)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":  "授权失败",
@@ -103,24 +103,39 @@ func (ctrl *AuthController) CallbackHandler(c *gin.Context) {
 	})
 }
 
-// RefreshTokenHandler 手动强制刷新 Token
+// RefreshToken 手动强制刷新 Token
 // @Summary 刷新店铺 Token
-// @Param shop_id query int true "店铺 ID"
-func (ctrl *AuthController) RefreshTokenHandler(c *gin.Context) {
+// @Description 手动控制刷新店铺 TOKEN
+// @Tags Auth (授权模块)
+// @Accept json
+// @Produce json
+// @Param shop_id query int true "预置的店铺 ID (Database Primary Key)"
+// @Success 200 {object} map[string]interface{} "成功消息+下一次过期时间"
+// @Failure 400 {string} string "错误信息"
+// @Router /auth/refresh [get]
+func (ctrl *AuthController) RefreshToken(c *gin.Context) {
 	shopIDStr := c.Query("shop_id")
-	id, _ := strconv.Atoi(shopIDStr)
-
-	// 1. 查店铺
-	var shop model.Shop
-	// 需要 Preload Developer 来获取 AppKey
-	if err := ctrl.AuthService.ShopRepo.DB.Preload("Proxy").Preload("Developer").First(&shop, id).Error; err != nil {
-		c.JSON(404, gin.H{"error": "店铺不存在"})
+	if shopIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少 shop_id 参数"})
 		return
 	}
 
-	// 2. 调用 Service 强制刷新
-	// 注意：虽然 Cron 里有这个逻辑，但 Controller 这里直接调用 Service 的方法也是合理的
-	err := ctrl.AuthService.RefreshAccessToken(&shop)
+	// 转为 int64
+	id, err := strconv.ParseInt(shopIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "shop_id 必须是数字"})
+		return
+	}
+
+	shop, err := ctrl.authService.ShopRepo.GetShopByID(c.Request.Context(), id)
+	if err != nil {
+		log.Printf("shop id : %d, refresh token err:%v", id, err)
+		c.JSON(404, gin.H{"error": "查询店铺出错"})
+		return
+	}
+
+	// 调用 Service 强制刷新
+	err = ctrl.authService.RefreshAccessToken(c.Request.Context(), shop)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "刷新失败: " + err.Error()})
 		return

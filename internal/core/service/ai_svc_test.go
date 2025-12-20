@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"etsy_dev_v1_202512/internal/core/model"
-	"etsy_dev_v1_202512/pkg/utils"
 	"fmt"
 	"testing"
 	"time"
@@ -58,7 +57,7 @@ func TestVisionToPrompt(t *testing.T) {
 	fullPrompt := fmt.Sprintf("Professional product photography. %s", desc)
 
 	// 2. 手动构建请求 (为了看清楚报错)
-	client := utils.NewProxiedClient(proxy)
+	client := NewProxiedClient(proxy)
 	// ⚠️ 尝试回退到 imagen-3.0-generate-001 试试，有时候 4.0 虽然在列表里但无法通过此 endpoint 访问
 	// 或者先保持 4.0，看报错说啥
 	targetModel := "imagen-4.0-generate-001"

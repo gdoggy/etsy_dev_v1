@@ -2,7 +2,7 @@ package model
 
 type Developer struct {
 	BaseModel
-
+	AuditMixin
 	// 1. 账号基础信息 (登录 Etsy 开发者后台用)
 	Name       string `gorm:"size:50"` // 备注名称，如 "开发者账号A"
 	LoginEmail string `gorm:"uniqueIndex;size:100;not null"`
@@ -15,15 +15,11 @@ type Developer struct {
 	APIKey       string `gorm:"size:100;index;"`
 	SharedSecret string `gorm:"size:100"`
 
-	// 3. 基础设施绑定
-	ProxyID int64  `gorm:"index"`
-	Proxy   *Proxy `gorm:"foreignKey:ProxyID"`
-
-	// 4. 关联关系
+	// 3. 关联关系
 	// 一个开发者 Key 可以授权给多个店铺使用
 	Shops []Shop `gorm:"foreignKey:DeveloperID"`
 }
 
-func (*Developer) TableName() string {
+func (Developer) TableName() string {
 	return "developers"
 }

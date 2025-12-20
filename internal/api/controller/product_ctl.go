@@ -1,4 +1,4 @@
-package handler
+package controller
 
 import (
 	"etsy_dev_v1_202512/internal/api/dto"
@@ -9,14 +9,14 @@ import (
 )
 
 type ProductController struct {
-	ProductService *service.ProductService
+	productService *service.ProductService
 }
 
 func NewProductController(productService *service.ProductService) *ProductController {
-	return &ProductController{ProductService: productService}
+	return &ProductController{productService: productService}
 }
 
-// GetProductsHandler 获取商品列表
+// GetProducts 获取商品列表
 // @Summary 获取指定店铺的商品列表
 // @Tags Product
 // @Accept json
@@ -26,10 +26,10 @@ func NewProductController(productService *service.ProductService) *ProductContro
 // @Param page_size query int false "每页数量 (默认20)" default(20)
 // @Success 200 {object} view.ProductListResp
 // @Router /api/products [get]
-func (ctrl *ProductController) GetProductsHandler(c *gin.Context) {
+func (ctrl *ProductController) GetProducts(c *gin.Context) {
 	// 1. 参数解析
 	shopIDStr := c.Query("shop_id")
-	shopID, err := strconv.Atoi(shopIDStr)
+	shopID, err := strconv.ParseInt(shopIDStr, 10, 64)
 	if err != nil || shopID <= 0 {
 		c.JSON(400, gin.H{"error": "无效的 shop_id"})
 		return
@@ -39,7 +39,7 @@ func (ctrl *ProductController) GetProductsHandler(c *gin.Context) {
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 
 	// 2. 调用 Service 查库
-	products, total, err := ctrl.ProductService.GetShopProducts(uint(shopID), page, pageSize)
+	products, total, err := ctrl.productService.GetShopProducts(shopID, page, pageSize)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "查询失败: " + err.Error()})
 		return

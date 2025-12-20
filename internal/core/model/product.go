@@ -8,6 +8,7 @@ import (
 type Product struct {
 	// --- ERP 内部管理字段 ---
 	BaseModel
+	AuditMixin
 	ShopID     int64  `gorm:"index:idx_shop_state;not null"` // 店铺 ID (多店铺隔离核心)
 	Shop       *Shop  `gorm:"foreignKey:ShopID"`
 	LocalSKU   string `gorm:"type:varchar(100);index"` // ERP 内部管理的 SKU
@@ -76,19 +77,15 @@ func (Product) TableName() string {
 
 type ProductVariant struct {
 	BaseModel
-
 	// --- 关联 ---
 	ProductID int64    `gorm:"index;not null"`
 	Product   *Product `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 	ShopID    int64    `gorm:"index"`
-
 	// --- Etsy 身份标识 ---
 	EtsyVariantID int64 `gorm:"index"`
-
 	// --- 规格组合 ---
 	Properties   datatypes.JSON `gorm:"type:jsonb"` // {"Color":"Red"}
 	EtsyRawProps datatypes.JSON `gorm:"type:jsonb"` // 原始数据
-
 	// --- 销售数据 ---
 	EtsyOfferingID int64  `gorm:"default:0"`
 	PriceAmount    int64  `gorm:"default:0"`
@@ -96,7 +93,6 @@ type ProductVariant struct {
 	CurrencyCode   string `gorm:"type:varchar(3)"`
 	Quantity       int    `gorm:"default:0"`
 	IsEnabled      bool   `gorm:"default:true"`
-
 	// --- SKU ---
 	LocalSKU string `gorm:"type:varchar(100);index"`
 	EtsySKU  string `gorm:"type:varchar(100);index"`

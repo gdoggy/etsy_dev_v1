@@ -13,7 +13,7 @@ const (
 
 type Shop struct {
 	BaseModel // 包含 ID(int64), CreatedAt, UpdatedAt
-
+	AuditMixin
 	// 1. 核心身份
 	// 改名为 EtsyShopID 以区分主键 ID，且与 Product 表外键保持一致
 	EtsyShopID int64  `gorm:"uniqueIndex;not null"` // 对应 Etsy 平台的 shop_id
@@ -38,6 +38,7 @@ type Shop struct {
 	// --- 代理关系 ---
 	ProxyID int64  `gorm:"index"`
 	Proxy   *Proxy `gorm:"foreignKey:ProxyID"`
+	Region  string `gorm:"type:text"`
 
 	// --- 开发者账号关系 ---
 	DeveloperID int64      `gorm:"index"`

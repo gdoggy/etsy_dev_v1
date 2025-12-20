@@ -1,23 +1,5 @@
 package service
 
-import (
-	"context"
-	"encoding/json"
-	"etsy_dev_v1_202512/internal/core/model"
-	"etsy_dev_v1_202512/pkg/gemini"
-	"etsy_dev_v1_202512/pkg/utils"
-	"fmt"
-	"net/http"
-	"net/url"
-	"strings"
-	"sync"
-	"time"
-
-	"github.com/google/generative-ai-go/genai"
-	//"golang.org/x/sync/errgroup" // 需要 go get golang.org/x/sync
-	"google.golang.org/api/option"
-)
-
 // AIConfig AI 服务配置 (支持前端/配置文件动态传入)
 type AIConfig struct {
 	ApiKey     string
@@ -53,14 +35,10 @@ func NewAIService(cfg AIConfig) *AIService {
 	}
 }
 
+/*
 // createClient 内部辅助：创建带代理的 client
 func (s *AIService) createClient(ctx context.Context, proxy *model.Proxy) (*genai.Client, error) {
-	var httpClient *http.Client
-	if proxy != nil && proxy.IP != "" {
-		if proxyURL, err := url.Parse(proxy.ProxyURL()); err == nil {
-			httpClient = &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}}
-		}
-	}
+	var httpClient = &http.Client{Transport: &http.Transport{}}
 
 	opts := []option.ClientOption{option.WithAPIKey(s.Config.ApiKey)}
 	if httpClient != nil {
@@ -187,7 +165,7 @@ func (s *AIService) analyzeProductImage(ctx context.Context, proxy *model.Proxy,
 	}
 
 	prompt := fmt.Sprintf(`
-		Analyze this product image of "%s". 
+		Analyze this product image of "%s".
 		Write a highly detailed visual description prompt suitable for an AI image generator (like Midjourney or Imagen).
 		Describe the material, color, shape, texture, pattern, and key features in detail.
 		Keep it objective and descriptive. Do not include marketing fluff.
@@ -232,7 +210,7 @@ func (s *AIService) generateTextsSDK(ctx context.Context, proxy *model.Proxy, ke
 		Product Keyword: %s
 		Visual Details: %s
 		User Instructions: %s
-		
+
 		Requirements:
 		1. Title: SEO optimized, high traffic keywords.
 		2. Description: Engaging, include the visual details mentioned.
@@ -282,7 +260,7 @@ func (s *AIService) generateImagesREST(ctx context.Context, proxy *model.Proxy, 
 	// API 付费，暂时跳过
 	return nil, nil
 
-	client := utils.NewProxiedClient(proxy)
+	client := &http.Client{}
 	// 使用 beta 接口
 	urlGoogle := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:predict?key=%s", s.Config.ImageModel, s.Config.ApiKey)
 
@@ -351,7 +329,7 @@ func (s *AIService) generateVideoREST(ctx context.Context, proxy *model.Proxy, p
 		fmt.Println("[Warn] 当前账号无视频模型权限，返回模拟视频以跑通流程。")
 		return "test video", nil
 	}
-	client := utils.NewProxiedClient(proxy)
+	client := &http.Client{}
 	submitUrl := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:predict?key=%s", s.Config.VideoModel, s.Config.ApiKey)
 
 	payload := map[string]interface{}{
@@ -442,7 +420,7 @@ func (s *AIService) createGenAIClient(ctx context.Context, proxy *model.Proxy) (
 
 	if proxy != nil && proxy.IP != "" {
 		// 1. 获取代理 Client
-		restyClient := utils.NewProxiedClient(proxy)
+		restyClient := NewProxiedClient(proxy)
 		httpClient := restyClient.GetClient()
 		httpClient.Timeout = time.Second * 300
 
@@ -461,3 +439,5 @@ func (s *AIService) createGenAIClient(ctx context.Context, proxy *model.Proxy) (
 
 	return genai.NewClient(ctx, opts...)
 }
+
+*/

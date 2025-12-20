@@ -1,26 +1,17 @@
 package service
 
 import (
-	"encoding/json"
 	"etsy_dev_v1_202512/internal/core/model"
 	"etsy_dev_v1_202512/internal/repository"
-	"etsy_dev_v1_202512/pkg/etsy"
-	"etsy_dev_v1_202512/pkg/utils"
-	"fmt"
-	"math"
-	"time"
-
-	"github.com/go-resty/resty/v2"
-	"gorm.io/gorm/clause"
 )
 
 type ProductService struct {
-	ShopRepo  *repository.ShopRepository
+	ShopRepo  *repository.ShopRepo
 	AIService *AIService
 	Storage   *StorageService
 }
 
-func NewProductService(shopRepo *repository.ShopRepository, ai *AIService, storage *StorageService) *ProductService {
+func NewProductService(shopRepo *repository.ShopRepo, ai *AIService, storage *StorageService) *ProductService {
 	return &ProductService{
 		ShopRepo:  shopRepo,
 		AIService: ai,
@@ -28,20 +19,21 @@ func NewProductService(shopRepo *repository.ShopRepository, ai *AIService, stora
 	}
 }
 
-func (s *ProductService) SyncAndSaveListings(dbShopID uint) error {
+func (s *ProductService) GetShopProducts(shopID int64, page, pageSize int) ([]model.Product, int64, error) {
+	panic("implement me")
+}
+
+/*
+func (s *ProductService) SyncAndSaveListings(ctx context.Context, shopID int64) error {
 	// 1. 获取店铺鉴权信息
-	var shop model.Shop
-	if err := s.ShopRepo.DB.Preload("Proxy").Preload("Developer").First(&shop, dbShopID).Error; err != nil {
+	shop, err := s.ShopRepo.GetShopByID(ctx, shopID)
+	if err != nil {
 		return fmt.Errorf("店铺不存在: %v", err)
 	}
 
 	if shop.TokenStatus == model.TokenStatusInvalid {
 		return fmt.Errorf("授权已失效，请在店铺列表重新授权")
 	}
-
-	// 工厂调用一键获取配置好的 Client
-	// 无论是 Debug、超时、还是代理 IP，都在这里自动完成了
-	client := utils.NewProxiedClient(shop.Proxy)
 
 	// 2. 循环分页
 	limit := 100 // 建议设为 100，效率最高
@@ -101,7 +93,7 @@ func (s *ProductService) SyncAndSaveListings(dbShopID uint) error {
 
 	// 6. 批量入库 (UPSERT 逻辑)
 	// 这里的逻辑是：如果 listing_id 冲突，就更新后面列出的字段
-	err := s.ShopRepo.DB.Clauses(clause.OnConflict{
+	err := s.ShopRepo.db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "listing_id"}}, // 冲突检测列
 		DoUpdates: clause.AssignmentColumns([]string{
 			"title", "description", "state", "url",
@@ -123,7 +115,7 @@ func (s *ProductService) GetShopProducts(shopID uint, page, pageSize int) ([]mod
 	var total int64
 
 	// 基础查询
-	query := s.ShopRepo.DB.Model(&model.Product{}).Where("shop_id = ?", shopID)
+	query := s.ShopRepo.db.Model(&model.Product{}).Where("shop_id = ?", shopID)
 
 	// 1. 查总数
 	if err := query.Count(&total).Error; err != nil {
@@ -148,11 +140,11 @@ func (s *ProductService) GetShopProducts(shopID uint, page, pageSize int) ([]mod
 func (s *ProductService) CreateDraftListing(shopID int64, req etsy.CreateListingReq) (int64, error) {
 	// 1. 获取店铺
 	var shop model.Shop
-	if err := s.ShopRepo.DB.Preload("Proxy").Preload("Developer").First(&shop, shopID).Error; err != nil {
+	if err := s.ShopRepo.db.Preload("Proxy").Preload("Developer").First(&shop, shopID).Error; err != nil {
 		return 0, fmt.Errorf("店铺不存在")
 	}
 
-	client := utils.NewProxiedClient(shop.Proxy)
+	client := NewProxiedClient(shop.Proxy)
 
 	// 2. 价格处理 (必须使用 math.Round 修正精度)
 	// 变量在这里定义，确保作用域覆盖整个函数
@@ -237,7 +229,7 @@ func (s *ProductService) CreateDraftListing(shopID int64, req etsy.CreateListing
 	}
 
 	// 严谨处理：如果入库失败，必须回滚远程操作
-	if err = s.ShopRepo.DB.Create(&newProduct).Error; err != nil {
+	if err = s.ShopRepo.db.Create(&newProduct).Error; err != nil {
 		s.deleteEtsyListingInternal(client, shop.EtsyShopID, res.ListingID)
 		return 0, fmt.Errorf("本地入库失败(已回滚远程草稿): %v", err)
 	}
@@ -264,10 +256,10 @@ func (s *ProductService) deleteEtsyListingInternal(client *resty.Client, shopEts
 func (s *ProductService) SyncShippingProfiles(shopID uint) error {
 	// 1. 准备 Shop & Client
 	var shop model.Shop
-	if err := s.ShopRepo.DB.Preload("Proxy").Preload("Developer").First(&shop, shopID).Error; err != nil {
+	if err := s.ShopRepo.db.Preload("Proxy").Preload("Developer").First(&shop, shopID).Error; err != nil {
 		return err
 	}
-	client := utils.NewProxiedClient(shop.Proxy)
+	client := NewProxiedClient(shop.Proxy)
 
 	// 2. 请求 Etsy
 	url := fmt.Sprintf("https://api.etsy.com/v3/application/shops/%d/shipping-profiles", shop.EtsyShopID)
@@ -308,7 +300,7 @@ func (s *ProductService) SyncShippingProfiles(shopID uint) error {
 
 	// 4. 批量 Upsert (核心逻辑)
 	// 依赖于 idx_shop_profile 唯一索引
-	err := s.ShopRepo.DB.Clauses(clause.OnConflict{
+	err := s.ShopRepo.db.Clauses(clause.OnConflict{
 		// 冲突列 (根据哪个字段判断重复)
 		Columns: []clause.Column{{Name: "shop_id"}, {Name: "etsy_profile_id"}},
 
@@ -329,3 +321,4 @@ func (s *ProductService) SyncShippingProfiles(shopID uint) error {
 
 	return nil
 }
+*/

@@ -4,6 +4,7 @@ package model
 // GORM 自定义连接表 (Join Table)
 type ShopMember struct {
 	BaseModel
+	AuditMixin
 	// 联合唯一索引
 	// 确保一个用户在一个店铺里只有一条记录
 	SysUserID int64 `gorm:"index;uniqueIndex:idx_user_shop;not null"`

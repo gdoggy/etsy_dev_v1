@@ -148,3 +148,14 @@ type ShopDTO struct {
 	ReviewCount                    int      `json:"review_count"`
 	ReviewAverage                  float64  `json:"review_average"`
 }
+
+// UserResp 对应 /v3/application/users/me 的响应
+type UserResp struct {
+	UserID int64 `json:"user_id"`
+}
+
+// ShopListResp 对应 /v3/application/users/{id}/shops 的响应
+type ShopListResp struct {
+	Results []ShopDTO `json:"results"`
+	Count   int       `json:"count"`
+}
