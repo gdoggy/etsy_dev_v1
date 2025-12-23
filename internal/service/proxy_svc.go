@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"etsy_dev_v1_202512/internal/api/dto"
-	"etsy_dev_v1_202512/internal/core/model"
+	"etsy_dev_v1_202512/internal/model"
 	"etsy_dev_v1_202512/internal/repository"
 	"fmt"
 	"log"
@@ -292,4 +292,12 @@ func (s *ProxyService) PickBestProxy(ctx context.Context, region string) (*model
 		return nil, err
 	}
 	return proxy, nil
+}
+
+func (s *ProxyService) PickRandomProxy(ctx context.Context) (*model.Proxy, error) {
+	proxy, err := s.ProxyRepo.GetRandomProxy(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return proxy, err
 }

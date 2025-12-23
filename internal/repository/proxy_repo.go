@@ -3,9 +3,8 @@ package repository
 import (
 	"context"
 	"errors"
+	"etsy_dev_v1_202512/internal/model"
 	"time"
-
-	"etsy_dev_v1_202512/internal/core/model"
 
 	"gorm.io/gorm"
 )
@@ -40,7 +39,7 @@ func (r *ProxyRepo) Delete(ctx context.Context, id int64) error {
 // GetByID 获取单条详情
 // Preload，为了满足 DTO 中展示 "BoundShops" 和 "BoundDevelopers" 的需求
 func (r *ProxyRepo) GetByID(ctx context.Context, id int64) (*model.Proxy, error) {
-	var proxy *model.Proxy
+	var proxy model.Proxy
 	err := r.db.WithContext(ctx).
 		Preload("Shops", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id", "proxy_id", "shop_name", "etsy_shop_id", "token_status")
@@ -53,13 +52,23 @@ func (r *ProxyRepo) GetByID(ctx context.Context, id int64) (*model.Proxy, error)
 	if err != nil {
 		return nil, err
 	}
-	return proxy, nil
+	return &proxy, nil
+}
+
+// GetRandomProxy 随机获取一个可用代理
+func (r *ProxyRepo) GetRandomProxy(ctx context.Context) (*model.Proxy, error) {
+	var proxy model.Proxy
+	err := r.db.WithContext(ctx).Where("status = ?", 1).Order("RANDOM()").Take(&proxy).Error
+	if err != nil {
+		return nil, err
+	}
+	return &proxy, nil
 }
 
 // FindByEndpoint 根据 IP 和 Port 查重
 // 业务逻辑：创建前检查是否已存在
 func (r *ProxyRepo) FindByEndpoint(ctx context.Context, ip, port string) (*model.Proxy, error) {
-	var proxy *model.Proxy
+	var proxy model.Proxy
 	err := r.db.WithContext(ctx).
 		Where("ip = ? AND port = ?", ip, port).
 		First(&proxy).Error
@@ -70,7 +79,7 @@ func (r *ProxyRepo) FindByEndpoint(ctx context.Context, ip, port string) (*model
 	if err != nil {
 		return nil, err // 数据库错误
 	}
-	return proxy, nil // 找到了，说明重复
+	return &proxy, nil // 找到了，说明重复
 }
 
 // 3. 列表搜索
@@ -141,7 +150,7 @@ func (r *ProxyRepo) FindCheckList(ctx context.Context) ([]model.Proxy, error) {
 // 查询 region 相同且负载 < 2 的正常代理
 
 func (r *ProxyRepo) FindSpareProxy(ctx context.Context, region string) (*model.Proxy, error) {
-	var proxy *model.Proxy
+	var proxy model.Proxy
 	// SQL 逻辑：
 	// 1. SELECT proxies.*: 选择代理所有字段
 	// 2. LEFT JOIN shops: 关联店铺表，用来计数
@@ -165,7 +174,7 @@ func (r *ProxyRepo) FindSpareProxy(ctx context.Context, region string) (*model.P
 	if err != nil {
 		return nil, err
 	}
-	return proxy, nil
+	return &proxy, nil
 }
 
 // UpdateStatus 更新状态

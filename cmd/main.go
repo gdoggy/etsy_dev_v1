@@ -1,11 +1,11 @@
 package main
 
 import (
-	"etsy_dev_v1_202512/internal/api/controller"
-	"etsy_dev_v1_202512/internal/core/model"
-	"etsy_dev_v1_202512/internal/core/service"
+	controller2 "etsy_dev_v1_202512/internal/controller"
+	model2 "etsy_dev_v1_202512/internal/model"
 	"etsy_dev_v1_202512/internal/repository"
 	"etsy_dev_v1_202512/internal/router"
+	service2 "etsy_dev_v1_202512/internal/service"
 	"etsy_dev_v1_202512/internal/task"
 	"etsy_dev_v1_202512/pkg/database"
 	"etsy_dev_v1_202512/pkg/net"
@@ -18,16 +18,16 @@ func main() {
 	// 1. utils 层
 	db := database.InitDB(
 		// Manager
-		&model.SysUser{}, &model.ShopMember{},
+		&model2.SysUser{}, &model2.ShopMember{},
 		// Account
-		&model.Proxy{}, &model.Developer{},
+		&model2.Proxy{}, &model2.Developer{},
 		// Shop
-		&model.Shop{}, &model.ShopAccount{},
+		&model2.Shop{}, &model2.ShopAccount{},
 		// Product
-		&model.Product{}, &model.ProductImage{}, &model.ProductVariant{},
+		&model2.Product{}, &model2.ProductImage{}, &model2.ProductVariant{},
 	)
 
-	aiConfig := service.AIConfig{
+	aiConfig := service2.AIConfig{
 		ApiKey:     "",
 		TextModel:  "",
 		ImageModel: "",
@@ -41,25 +41,25 @@ func main() {
 
 	// Service 层
 	// net
-	proxyService := service.NewProxyService(proxyRepo, shopRepo)
-	networkProvider := service.NewNetworkProvider(shopRepo, proxyService)
+	proxyService := service2.NewProxyService(proxyRepo, shopRepo)
+	networkProvider := service2.NewNetworkProvider(shopRepo, proxyService)
 
 	// 调度器
 	dispatcher := net.NewDispatcher(networkProvider)
 
 	// 消费者
-	aiService := service.NewAIService(aiConfig)
-	storageService := service.NewStorageService()
-	authService := service.NewAuthService(shopRepo, dispatcher)
-	shopService := service.NewShopService(shopRepo, dispatcher)
+	aiService := service2.NewAIService(aiConfig)
+	storageService := service2.NewStorageService()
+	authService := service2.NewAuthService(shopRepo, dispatcher)
+	shopService := service2.NewShopService(shopRepo, dispatcher)
 
-	productService := service.NewProductService(shopRepo, aiService, storageService)
+	productService := service2.NewProductService(shopRepo, aiService, storageService)
 
 	// Controller 层
-	proxyController := controller.NewProxyController(proxyService)
-	authController := controller.NewAuthController(authService)
-	shopController := controller.NewShopController(shopService)
-	productController := controller.NewProductController(productService)
+	proxyController := controller2.NewProxyController(proxyService)
+	authController := controller2.NewAuthController(authService)
+	shopController := controller2.NewShopController(shopService)
+	productController := controller2.NewProductController(productService)
 
 	// Task 层定时任务
 	proxyMonitorTask := task.NewProxyMonitor(proxyRepo, proxyService)

@@ -2,7 +2,7 @@ package controller
 
 import (
 	"etsy_dev_v1_202512/internal/api/dto"
-	"etsy_dev_v1_202512/internal/core/service"
+	"etsy_dev_v1_202512/internal/service"
 	"strconv"
 
 	"github.com/gin-gonic/gin"

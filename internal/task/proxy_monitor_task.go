@@ -2,9 +2,9 @@ package task
 
 import (
 	"context"
-	"etsy_dev_v1_202512/internal/core/model"
-	"etsy_dev_v1_202512/internal/core/service"
+	"etsy_dev_v1_202512/internal/model"
 	"etsy_dev_v1_202512/internal/repository"
+	"etsy_dev_v1_202512/internal/service"
 	"log"
 	"sync"
 	"time"

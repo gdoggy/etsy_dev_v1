@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"etsy_dev_v1_202512/internal/core/model"
+	"etsy_dev_v1_202512/internal/model"
 	"etsy_dev_v1_202512/internal/repository"
 	"etsy_dev_v1_202512/pkg/etsy"
 	"etsy_dev_v1_202512/pkg/net"
@@ -17,11 +17,21 @@ type ShopService struct {
 	dispatcher net.Dispatcher
 }
 
-func NewShopService(repo *repository.ShopRepo, dispatcher net.Dispatcher) *ShopService {
+func NewShopService(shopRepo *repository.ShopRepo, dispatcher net.Dispatcher) *ShopService {
 	return &ShopService{
-		ShopRepo:   repo,
+		ShopRepo:   shopRepo,
 		dispatcher: dispatcher,
 	}
+}
+
+// GetShop 查店铺
+func (s *ShopService) GetShop(ctx context.Context, shopId int) (model.Shop, error) {
+	panic("implement me")
+}
+
+// CreateShop 新建店铺
+func (s *ShopService) CreateShop(ctx context.Context, shop model.Shop) (model.Shop, error) {
+	panic("implement me")
 }
 
 // SyncEtsyAccountInfo 同步 Etsy 账号信息到本地

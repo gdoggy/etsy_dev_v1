@@ -1,6 +1,8 @@
 package controller
 
-import "etsy_dev_v1_202512/internal/core/service"
+import (
+	"etsy_dev_v1_202512/internal/service"
+)
 
 type ShopController struct {
 	shopService *service.ShopService

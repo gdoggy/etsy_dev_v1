@@ -24,6 +24,15 @@ func NewNetworkProvider(shopRepo *repository.ShopRepo, proxyService *ProxyServic
 
 // GetProxy 实现接口：根据 key (ShopID) 获取可用代理
 func (n *NetworkProvider) GetProxy(ctx context.Context, shopID int64) (*url.URL, error) {
+	// 无 ID 随机生成 proxy
+	if shopID == 0 {
+		randomProxy, err := n.ProxyService.PickRandomProxy(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("no random proxy available: %v", err)
+		}
+		proxyURL, err := randomProxy.ProxyToURL()
+		return proxyURL, err
+	}
 	// 1. 查库获取 Shop 信息
 	shop, err := n.ShopRepo.GetShopByID(ctx, shopID)
 	if err != nil {

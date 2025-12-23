@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"etsy_dev_v1_202512/internal/core/service"
+	"etsy_dev_v1_202512/internal/service"
 	"log"
 	"net/http"
 	"strconv"
@@ -19,31 +19,36 @@ func NewAuthController(s *service.AuthService) *AuthController {
 
 // Login
 // @Summary 获取 Etsy 授权链接
-// @Description 为指定的预置店铺生成授权链接，并生成 OAuth 授权跳转链接
+// @Description 为店铺生成授权链接，并生成 OAuth 授权跳转链接；必传参数 region
 // @Tags Auth (授权模块)
 // @Accept json
 // @Produce json
-// @Param shop_id query int true "预置的店铺 ID (Database Primary Key)"
+// @Param shop_id query int "店铺 shop ID (Database Primary Key)，初次授权时为空"
+// @Param region query string true "国家，必填字段"
 // @Success 200 {string} string "点击按钮手动复制链接 url"
 // @Failure 400 {string} string "错误信息"
 // @Router /auth/login [get]
 func (ctrl *AuthController) Login(c *gin.Context) {
-	// 1. 获取 shop_id
+	// 1. 获取 region
+	region := c.Query("region")
+	if region == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "region 为空"})
+		return
+	}
+	// 2. 获取 shop_id
+	var shopID int64 = 0
 	shopIDStr := c.Query("shop_id")
-	if shopIDStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少 shop_id 参数"})
-		return
+	if shopIDStr != "" {
+		var err error
+		shopID, err = strconv.ParseInt(shopIDStr, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "shop_id 必须是数字"})
+			return
+		}
 	}
 
-	// 转为 int64
-	id, err := strconv.ParseInt(shopIDStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "shop_id 必须是数字"})
-		return
-	}
-
-	// 2. 调用 Service (传入 int64 类型的 shopID)
-	url, err := ctrl.authService.GenerateLoginURL(c.Request.Context(), id)
+	// 2. 调用 Service
+	url, err := ctrl.authService.GenerateLoginURL(c.Request.Context(), shopID, region)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":  "生成失败",

@@ -1,7 +1,7 @@
 package router
 
 import (
-	"etsy_dev_v1_202512/internal/api/controller"
+	controller2 "etsy_dev_v1_202512/internal/controller"
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -12,10 +12,10 @@ import (
 
 // InitRoutes 注册所有路由
 func InitRoutes(r *gin.Engine,
-	proxyCtl *controller.ProxyController,
-	authCtrl *controller.AuthController,
-	shopCtl *controller.ShopController,
-	productCtrl *controller.ProductController) {
+	proxyCtl *controller2.ProxyController,
+	authCtrl *controller2.AuthController,
+	shopCtl *controller2.ShopController,
+	productCtrl *controller2.ProductController) {
 	// 1. Swagger 文档路由
 	// 访问 http://localhost:8080/swagger/index.html 即可查看
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))

@@ -2,7 +2,7 @@ package service
 
 import (
 	"encoding/json"
-	"etsy_dev_v1_202512/internal/core/model"
+	"etsy_dev_v1_202512/internal/model"
 	"etsy_dev_v1_202512/pkg/etsy"
 
 	"github.com/lib/pq"

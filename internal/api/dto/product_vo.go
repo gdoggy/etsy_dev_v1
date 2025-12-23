@@ -1,7 +1,7 @@
 package dto
 
 import (
-	"etsy_dev_v1_202512/internal/core/model"
+	"etsy_dev_v1_202512/internal/model"
 	"strconv"
 )
 

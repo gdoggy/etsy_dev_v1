@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"etsy_dev_v1_202512/internal/core/model"
+	"etsy_dev_v1_202512/internal/model"
 	"etsy_dev_v1_202512/pkg/net"
 	"fmt"
 	"log"
@@ -22,6 +22,7 @@ import (
 const (
 	// CallbackURL 必须与 Etsy 后台填写的完全一致
 	// CallbackURL = "http://localhost:8080/api/auth/callback"
+	// 测试用 URL
 	CallbackURL  = "https://elizabet-avian-glenna.ngrok-free.dev/api/auth/callback"
 	EtsyTokenURL = "https://api.etsy.com/v3/public/oauth/token"
 )
@@ -40,12 +41,20 @@ func NewAuthService(shopRepo *repository.ShopRepo, dispatcher net.Dispatcher) *A
 }
 
 // GenerateLoginURL 生成授权链接
-func (s *AuthService) GenerateLoginURL(ctx context.Context, shopID int64) (string, error) {
-	// 1. 获取店铺预配置信息
-	shop, err := s.ShopRepo.GetShopByID(ctx, shopID)
-	if err != nil {
-		return "", err
+func (s *AuthService) GenerateLoginURL(ctx context.Context, shopID int64, region string) (string, error) {
+	// 1. 查店铺
+	var shop model.Shop
+	if shopID == 0 {
+		// 初次授权
+		// TODO.
+	} else {
+		existingShop, err := s.ShopRepo.GetShopByID(ctx, shopID)
+		if err != nil {
+			return "", err
+		}
+		shop = *existingShop
 	}
+
 	// 2. 严格校验
 	if shop.DeveloperID == 0 || shop.Developer.ID == 0 {
 		return "", errors.New("该店铺未绑定开发者账号，请检查配置")

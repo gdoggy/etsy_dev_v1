@@ -16,10 +16,11 @@ type Shop struct {
 	AuditMixin
 	// 1. 核心身份
 	// 改名为 EtsyShopID 以区分主键 ID，且与 Product 表外键保持一致
-	EtsyShopID int64  `gorm:"uniqueIndex;not null"` // 对应 Etsy 平台的 shop_id
-	UserID     int64  `gorm:"index;not null"`       // 对应 Etsy 平台的 user_id
+	EtsyShopID int64  `gorm:"uniqueIndex"` // 对应 Etsy 平台的 shop_id
+	UserID     int64  `gorm:"index"`       // 对应 Etsy 平台的 user_id
 	ShopName   string `gorm:"type:varchar(100)"`
-	LoginName  string `gorm:"type:varchar(100)"` // 登录名
+	LoginName  string `gorm:"type:varchar(100)"`                // 登录名
+	Region     string `gorm:"type:text;not null;default:'IDN'"` // 重要，默认印尼！必填字段，区分账户地区以分配 proxy & developer
 
 	// 2. 运营关键指标
 	ListingActiveCount   int     `gorm:"default:0"`                   // 在售数
@@ -38,7 +39,6 @@ type Shop struct {
 	// --- 代理关系 ---
 	ProxyID int64  `gorm:"index"`
 	Proxy   *Proxy `gorm:"foreignKey:ProxyID"`
-	Region  string `gorm:"type:text"`
 
 	// --- 开发者账号关系 ---
 	DeveloperID int64      `gorm:"index"`

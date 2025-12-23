@@ -2,7 +2,7 @@ package repository
 
 import (
 	"context"
-	"etsy_dev_v1_202512/internal/core/model"
+	"etsy_dev_v1_202512/internal/model"
 	"time"
 
 	"gorm.io/gorm"
@@ -23,12 +23,12 @@ func (r *ShopRepo) Create(ctx context.Context, shop *model.Shop) error {
 
 // GetShopByID 通过内部 ID 查找店铺
 func (r *ShopRepo) GetShopByID(ctx context.Context, shopID int64) (*model.Shop, error) {
-	var shop *model.Shop
+	var shop model.Shop
 	err := r.db.WithContext(ctx).Preload("Developer").Preload("Proxy").First(&shop, shopID).Error
 	if err != nil {
 		return nil, err
 	}
-	return shop, nil
+	return &shop, nil
 }
 
 // SaveOrUpdate 保存或更新店铺信息
@@ -56,12 +56,12 @@ func (r *ShopRepo) UpdateTokenStatus(ctx context.Context, shopID int64, status s
 
 // GetShopByEtsyShopID 根据 Etsy 官方 ShopID 查找
 func (r *ShopRepo) GetShopByEtsyShopID(ctx context.Context, etsyShopID string) (*model.Shop, error) {
-	var shop *model.Shop
+	var shop model.Shop
 	err := r.db.WithContext(ctx).Where("etsy_shop_id = ?", etsyShopID).First(&shop).Error
 	if err != nil {
 		return nil, err
 	}
-	return shop, nil
+	return &shop, nil
 }
 
 // GetShopsByProxyID 查代理受灾店铺
@@ -90,5 +90,23 @@ func (r *ShopRepo) FindExpiringShops(ctx context.Context) ([]model.Shop, error) 
 	err := r.db.WithContext(ctx).Preload("Developer").Preload("Proxy").
 		Where("token_expires_at < ? AND token_status != ?", threshold, model.TokenStatusInvalid).
 		Find(&shops).Error
+	if err != nil {
+		return nil, err
+	}
 	return shops, err
+}
+
+// BindDeveloper 新账户绑定开发者关系，业务侧必须输入 region，绑定相同国家的开发者账号
+func (r *ShopRepo) BindDeveloper(ctx context.Context, region string, developer *model.Developer) (*model.Shop, error) {
+	// 单个开发者最多绑定 2 个账号
+	// 先查询符合 region条件的账号，根据负载自动分配
+	var shop model.Shop
+	// TODO 使用事务管理
+	shop.Region = region
+	shop.Developer = developer
+	err := r.db.WithContext(ctx).Create(shop).Error
+	if err != nil {
+		return nil, err
+	}
+	return &shop, nil
 }

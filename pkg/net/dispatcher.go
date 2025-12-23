@@ -13,6 +13,7 @@ import (
 // ProxyProvider 定义“提供代理”的行为标准
 type ProxyProvider interface {
 	// GetProxy 根据业务唯一键 (shopID) 获取一个可用的代理地址
+	// 若 shop ID = 0，则随机返回一个可用代理
 	GetProxy(ctx context.Context, shopID int64) (*url.URL, error)
 
 	// ReportError 上报该业务键对应的代理已失效
@@ -26,6 +27,7 @@ type Dispatcher interface {
 	// shopID: 业务实体的唯一标识
 	// req: 标准的 http.Request 对象
 	Send(ctx context.Context, shopID int64, req *http.Request) (*http.Response, error)
+	Ping(ctx context.Context, req *http.Request) (*http.Response, error)
 }
 
 // httpDispatcher 是 Dispatcher 接口的具体实现
@@ -83,6 +85,20 @@ func (d *httpDispatcher) Send(ctx context.Context, shopID int64, req *http.Reque
 	}
 
 	return nil, fmt.Errorf("request failed after retries: %v", lastErr)
+}
+
+// Ping 随机选择端口 Ping 测试
+func (d *httpDispatcher) Ping(ctx context.Context, req *http.Request) (*http.Response, error) {
+	proxyURL, err := d.provider.GetProxy(ctx, 0)
+	if err != nil {
+		return nil, fmt.Errorf("proxy provider error: %v", err)
+	}
+	client := d.getClient(proxyURL)
+	resp, err := client.Do(req)
+	if err == nil {
+		return resp, nil
+	}
+	return nil, fmt.Errorf("request failed after retries: %v", err)
 }
 
 // getClient 内部复用逻辑

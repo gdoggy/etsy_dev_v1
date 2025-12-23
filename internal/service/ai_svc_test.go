@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"etsy_dev_v1_202512/internal/core/model"
+	"etsy_dev_v1_202512/internal/model"
 	"fmt"
 	"testing"
 	"time"
