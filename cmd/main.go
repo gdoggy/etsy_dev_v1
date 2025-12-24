@@ -37,6 +37,7 @@ func main() {
 	// 2. 依赖注入 (层层组装)
 	// Repo 层
 	proxyRepo := repository.NewProxyRepo(db)
+	developerRepo := repository.NewDeveloperRepo(db)
 	shopRepo := repository.NewShopRepo(db)
 
 	// Service 层
@@ -50,6 +51,7 @@ func main() {
 	// 消费者
 	aiService := service2.NewAIService(aiConfig)
 	storageService := service2.NewStorageService()
+	developerService := service2.NewDeveloperService(developerRepo)
 	authService := service2.NewAuthService(shopRepo, dispatcher)
 	shopService := service2.NewShopService(shopRepo, dispatcher)
 
@@ -57,6 +59,7 @@ func main() {
 
 	// Controller 层
 	proxyController := controller2.NewProxyController(proxyService)
+	developController := controller2.NewDeveloperController(developerService)
 	authController := controller2.NewAuthController(authService)
 	shopController := controller2.NewShopController(shopService)
 	productController := controller2.NewProductController(productService)
@@ -71,7 +74,14 @@ func main() {
 	r := gin.Default()
 
 	// 4. 注册路由
-	router.InitRoutes(r, proxyController, authController, shopController, productController)
+	router.InitRoutes(
+		r,
+		proxyController,
+		developController,
+		authController,
+		shopController,
+		productController,
+	)
 
 	// 5. 启动服务
 	if err := r.Run(":8080"); err != nil {

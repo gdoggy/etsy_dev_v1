@@ -27,7 +27,7 @@ func NewAuthController(s *service.AuthService) *AuthController {
 // @Param region query string true "国家，必填字段"
 // @Success 200 {string} string "点击按钮手动复制链接 url"
 // @Failure 400 {string} string "错误信息"
-// @Router /auth/login [get]
+// @Router /oauth/login [get]
 func (ctrl *AuthController) Login(c *gin.Context) {
 	// 1. 获取 region
 	region := c.Query("region")
@@ -74,7 +74,7 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 // @Param state query string true "安全校验码"
 // @Success 200 {object} map[string]interface{} "授权成功信息"
 // @Failure 400 {object} map[string]string "拒绝授权/参数错误"
-// @Router /api/auth/callback [get]
+// @Router /api/oauth/callback [get]
 func (ctrl *AuthController) Callback(c *gin.Context) {
 	code := c.Query("code")
 	state := c.Query("state")
@@ -117,7 +117,7 @@ func (ctrl *AuthController) Callback(c *gin.Context) {
 // @Param shop_id query int true "预置的店铺 ID (Database Primary Key)"
 // @Success 200 {object} map[string]interface{} "成功消息+下一次过期时间"
 // @Failure 400 {string} string "错误信息"
-// @Router /auth/refresh [get]
+// @Router /oauth/refresh [get]
 func (ctrl *AuthController) RefreshToken(c *gin.Context) {
 	shopIDStr := c.Query("shop_id")
 	if shopIDStr == "" {

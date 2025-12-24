@@ -77,7 +77,7 @@ func (s *ShopService) SyncEtsyAccountInfo(ctx context.Context, shopID int64) err
 
 func (s *ShopService) fetchEtsyUserID(ctx context.Context, shop *model.Shop) (int64, error) {
 	etsyUrl := "https://api.etsy.com/v3/application/users/me"
-	req, err := net.BuildEtsyRequest(ctx, "GET", etsyUrl, nil, shop.Developer.APIKey, shop.AccessToken)
+	req, err := net.BuildEtsyRequest(ctx, "GET", etsyUrl, nil, shop.Developer.ApiKey, shop.AccessToken)
 	if err != nil {
 		log.Printf("build ETSY request err: %v\n", err)
 		return 0, err
@@ -105,7 +105,7 @@ func (s *ShopService) fetchEtsyUserID(ctx context.Context, shop *model.Shop) (in
 
 func (s *ShopService) fetchEtsyShopDetails(ctx context.Context, shop *model.Shop, etsyUserID int64) (*etsy.ShopDTO, error) {
 	etsyUrl := fmt.Sprintf("https://api.etsy.com/v3/application/users/%d/shops", etsyUserID)
-	req, err := net.BuildEtsyRequest(ctx, "GET", etsyUrl, nil, shop.Developer.APIKey, shop.AccessToken)
+	req, err := net.BuildEtsyRequest(ctx, "GET", etsyUrl, nil, shop.Developer.ApiKey, shop.AccessToken)
 	if err != nil {
 		log.Printf("build ETSY request err: %v\n", err)
 		return nil, err

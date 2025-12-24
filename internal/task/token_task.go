@@ -28,7 +28,7 @@ func NewTokenTask(shopRepo *repository.ShopRepo, authService *service.AuthServic
 		ShopRepo:         shopRepo,
 		AuthService:      authService,
 		Cron:             cron.New(cron.WithSeconds()), // 支持秒级控制
-		concurrencyLimit: 100,                          // 稍微调低并发，给其他业务让路
+		concurrencyLimit: 50,                           // 稍微调低并发，给其他业务让路
 		sleepTime:        50 * time.Millisecond,        // 每个协程启动间隔，平滑波峰
 	}
 }

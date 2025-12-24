@@ -23,7 +23,7 @@ const (
 	// CallbackURL 必须与 Etsy 后台填写的完全一致
 	// CallbackURL = "http://localhost:8080/api/auth/callback"
 	// 测试用 URL
-	CallbackURL  = "https://elizabet-avian-glenna.ngrok-free.dev/api/auth/callback"
+	CallbackURL  = "https://elizabet-avian-glenna.ngrok-free.dev/api/oauth/callback"
 	EtsyTokenURL = "https://api.etsy.com/v3/public/oauth/token"
 )
 
@@ -41,6 +41,7 @@ func NewAuthService(shopRepo *repository.ShopRepo, dispatcher net.Dispatcher) *A
 }
 
 // GenerateLoginURL 生成授权链接
+// 初次授权 将新建店铺，绑定相同 region 下 且 <2 个 shop的 developer
 func (s *AuthService) GenerateLoginURL(ctx context.Context, shopID int64, region string) (string, error) {
 	// 1. 查店铺
 	var shop model.Shop
@@ -81,9 +82,10 @@ func (s *AuthService) GenerateLoginURL(ctx context.Context, shopID int64, region
 		     &code_challenge=DSWlW2Abh-cf8CeLL8-g3hQ2WQyYdKyiu83u_s7nRhI
 		     &code_challenge_method=S256
 	*/
+	// callback url 需要更新为 shop.Developer.CallbackURL
 	authURL := fmt.Sprintf(
 		"https://www.etsy.com/oauth/connect?response_type=code&client_id=%s&redirect_uri=%s&scope=%s&state=%s&code_challenge=%s&code_challenge_method=S256",
-		shop.Developer.APIKey, CallbackURL, scopes, state, challenge,
+		shop.Developer.ApiKey, CallbackURL, scopes, state, challenge,
 	)
 	return authURL, nil
 }
@@ -117,7 +119,8 @@ func (s *AuthService) HandleCallback(ctx context.Context, code, state string) (*
 	// 4. 组装请求
 	data := url.Values{}
 	data.Set("grant_type", "authorization_code")
-	data.Set("client_id", shop.Developer.APIKey)
+	data.Set("client_id", shop.Developer.ApiKey)
+	//data.Set("redirect_uri", shop.Developer.CallbackURL)
 	data.Set("redirect_uri", CallbackURL)
 	data.Set("code", code)
 	data.Set("code_verifier", verifier)
@@ -170,7 +173,7 @@ func (s *AuthService) RefreshAccessToken(ctx context.Context, shop *model.Shop) 
 	// 1. 组装请求
 	data := url.Values{}
 	data.Set("grant_type", "refresh_token")
-	data.Set("client_id", shop.Developer.APIKey)
+	data.Set("client_id", shop.Developer.ApiKey)
 	data.Set("refresh_token", shop.RefreshToken)
 
 	req, _ := http.NewRequestWithContext(ctx, "POST", EtsyTokenURL, strings.NewReader(data.Encode()))

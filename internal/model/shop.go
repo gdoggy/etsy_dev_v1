@@ -18,22 +18,22 @@ type Shop struct {
 	// 改名为 EtsyShopID 以区分主键 ID，且与 Product 表外键保持一致
 	EtsyShopID int64  `gorm:"uniqueIndex"` // 对应 Etsy 平台的 shop_id
 	UserID     int64  `gorm:"index"`       // 对应 Etsy 平台的 user_id
-	ShopName   string `gorm:"type:varchar(100)"`
-	LoginName  string `gorm:"type:varchar(100)"`                // 登录名
-	Region     string `gorm:"type:text;not null;default:'IDN'"` // 重要，默认印尼！必填字段，区分账户地区以分配 proxy & developer
+	ShopName   string `gorm:"size:100"`
+	LoginName  string `gorm:"size:100"`                       // 登录名
+	Region     string `gorm:"size:20;not null;default:'IDN'"` // 重要，默认印尼！必填字段，区分账户地区以分配 proxy & developer
 
 	// 2. 运营关键指标
 	ListingActiveCount   int     `gorm:"default:0"`                   // 在售数
 	TransactionSoldCount int     `gorm:"default:0"`                   // 总销量
 	ReviewCount          int     `gorm:"default:0"`                   // 评价数
 	ReviewAverage        float64 `gorm:"type:decimal(3,1);default:0"` // 评分
-	CurrencyCode         string  `gorm:"type:varchar(10)"`
+	CurrencyCode         string  `gorm:"size:20"`
 
 	// 3. 店铺状态
 	IsVacation      bool   `gorm:"default:false"`
 	VacationMessage string `gorm:"type:text"`
-	Url             string `gorm:"type:varchar(255)"`
-	IconUrl         string `gorm:"type:varchar(255)"`
+	Url             string `gorm:"size:255"`
+	IconUrl         string `gorm:"size:255"`
 
 	// 4. 基础设施绑定 (外键)
 	// --- 代理关系 ---
@@ -47,8 +47,8 @@ type Shop struct {
 	// 5. API Token
 	// 周期检测 token 是否过期
 	TokenStatus    string    `gorm:"index;size:20;default:'active'"`
-	AccessToken    string    `gorm:"type:text"`
-	RefreshToken   string    `gorm:"type:text"`
+	AccessToken    string    `gorm:"size:255"`
+	RefreshToken   string    `gorm:"size:255"`
 	TokenExpiresAt time.Time // Token 具体的过期时间点
 
 	// 6. 关联关系

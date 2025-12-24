@@ -69,6 +69,7 @@ func (h *ProxyController) Update(c *gin.Context) {
 		return
 	}
 
+	// 获取审计字段
 	operatorID := h.getUserID(c)
 
 	if err := h.proxyService.UpdateProxy(c.Request.Context(), req, operatorID); err != nil {
@@ -161,9 +162,6 @@ func (h *ProxyController) getUserID(c *gin.Context) int64 {
 		if id, ok := v.(int64); ok {
 			return id
 		}
-		if id, ok := v.(float64); ok {
-			return int64(id)
-		}
 	}
 	return 0
 }
@@ -178,7 +176,7 @@ type apiRes struct {
 	Life     string `json:"life"`
 }
 
-// Callback 通过 API 获取代理口令
+// Callback 通过 API 接收第三方数据 批量获取代理口令
 func (h *ProxyController) Callback(c *gin.Context) {
 	req := apiRes{}
 	if err := c.ShouldBindJSON(&req); err != nil {

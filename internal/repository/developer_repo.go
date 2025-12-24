@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"etsy_dev_v1_202512/internal/model"
 
 	"gorm.io/gorm"
@@ -13,6 +14,21 @@ type DeveloperRepo struct {
 
 func NewDeveloperRepo(db *gorm.DB) *DeveloperRepo {
 	return &DeveloperRepo{db: db}
+}
+
+// Create 新建 developer账号
+func (r *DeveloperRepo) Create(ctx context.Context, developer *model.Developer) error {
+	return r.db.WithContext(ctx).Create(developer).Error
+}
+
+// Update 更新
+func (r *DeveloperRepo) Update(ctx context.Context, developer *model.Developer) error {
+	return r.db.WithContext(ctx).Save(developer).Error
+}
+
+// Delete 软删除
+func (r *DeveloperRepo) Delete(ctx context.Context, id int64) error {
+	return r.db.WithContext(ctx).Delete(&model.Developer{}, id).Error
 }
 
 // FindBestDevByRegion 根据 region 找最优 developer
@@ -42,4 +58,29 @@ func (r *DeveloperRepo) FindBestDevByRegion(ctx context.Context, region string) 
 		return nil, err
 	}
 	return &dev, nil
+}
+
+// FindByApiKey 根据 apiKey 查重
+func (r *DeveloperRepo) FindByApiKey(ctx context.Context, key string) (*model.Developer, error) {
+	var dev model.Developer
+	err := r.db.WithContext(ctx).
+		Where("api_key = ?", key).
+		First(&dev).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil // 没找到，说明不重复，是安全的
+	}
+	if err != nil {
+		return nil, err // 数据库错误
+	}
+	return &dev, nil // 找到了，说明重复
+}
+
+// GetRandomActiveDomain 随机获取可用根域名
+func (r *DeveloperRepo) GetRandomActiveDomain(ctx context.Context) (*model.DomainPool, error) {
+	var domain model.DomainPool
+	err := r.db.WithContext(ctx).Where("is_active = ?", true).Order("RANDOM()").Take(&domain).Error
+	if err != nil {
+		return nil, err
+	}
+	return &domain, err
 }

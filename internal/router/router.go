@@ -13,6 +13,7 @@ import (
 // InitRoutes 注册所有路由
 func InitRoutes(r *gin.Engine,
 	proxyCtl *controller2.ProxyController,
+	developerCtl *controller2.DeveloperController,
 	authCtrl *controller2.AuthController,
 	shopCtl *controller2.ShopController,
 	productCtrl *controller2.ProductController) {
@@ -34,16 +35,26 @@ func InitRoutes(r *gin.Engine,
 			// GET /api/proxies/callback
 			proxy.GET("/callback", proxyCtl.Callback)
 		}
-		// auth 鉴权组
-		auth := api.Group("/auth")
+		// developer 开发者账号维护
+		developer := api.Group("/developers")
 		{
-			// GET /api/auth/login
+			// Get /api/developers
+			developer.GET("")
+			developer.POST("", developerCtl.Create)
+		}
+		// auth 鉴权组
+		// 正式处理回调
+		api.GET("/:path/auth/callback", authCtrl.Callback)
+		auth := api.Group("/oauth")
+		{
+			// GET /api/oauth/login
 			auth.GET("/login", authCtrl.Login)
 
-			// GET /api/auth/callback
+			// GET /api/oauth/callback
+			// 测试期处理回调
 			auth.GET("/callback", authCtrl.Callback)
 
-			// GET /api/auth/refresh
+			// GET /api/oauth/refresh
 			// 前端不应该直接提供 refresh 功能，后端检查 token 过期后应更新 shop status，前端引导用户重新授权
 			auth.POST("/refresh", authCtrl.RefreshToken)
 		}

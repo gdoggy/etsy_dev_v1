@@ -1,5 +1,12 @@
 package model
 
+type DomainPool struct {
+	BaseModel
+	AuditMixin
+	Host       string      `gorm:"size:255;unique"`
+	IsActive   bool        `gorm:"default:true"`
+	Developers []Developer `gorm:"foreignkey:DomainPoolID"`
+}
 type Developer struct {
 	BaseModel
 	AuditMixin
@@ -12,15 +19,19 @@ type Developer struct {
 	Status int `gorm:"default:0;index"`
 
 	// 2. API 凭证 (核心资产)
-	APIKey       string `gorm:"size:100;index;"`
+	ApiKey       string `gorm:"size:100;index;"`
 	SharedSecret string `gorm:"size:100"`
-	// 创建开发者账号后，系统生成 CallbackURL
-	CallbackURL string `gorm:"size:255"`
+	// 防关联
+	DomainPoolID int64       `gorm:"index"`
+	DomainPoll   *DomainPool `gorm:"foreignkey:DomainPoolID"`
+	SubDomain    string      `gorm:"size:50"`
+	CallbackPath string      `gorm:"size:50"`
+	CallbackURL  string      `gorm:"size:255"`
 	// 3. 关联关系
 	// 一个开发者 Key 可以授权给多个店铺使用
 	Shops []Shop `gorm:"foreignKey:DeveloperID"`
 }
 
-func (Developer) TableName() string {
+func (*Developer) TableName() string {
 	return "developers"
 }
