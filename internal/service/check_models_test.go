@@ -11,6 +11,9 @@ import (
 
 // 运行命令: go test -v internal/service/check_models_test.go -run TestListAvailableModels
 func TestListAvailableModels(t *testing.T) {
+	if testing.Short() {
+		t.Skip("跳过: 需要网络访问")
+	}
 	// ⚠️ 必须填入您的真实 API Key
 	apiKey := "AIzaSyCa9PL-Q3goYFJ7O5QAPxKqkEmoGPKAx88"
 

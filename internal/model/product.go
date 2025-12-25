@@ -21,10 +21,10 @@ const (
 type ProductSyncStatus int
 
 const (
-	SyncStatusSynced  ProductSyncStatus = 0 // 已同步
-	SyncStatusPending ProductSyncStatus = 1 // 待推送
-	SyncStatusFailed  ProductSyncStatus = 2 // 同步失败
-	SyncStatusLocal   ProductSyncStatus = 3 // 仅本地(AI草稿未上传)
+	ProductSyncStatusSynced  ProductSyncStatus = 0 // 已同步
+	ProductSyncStatusPending ProductSyncStatus = 1 // 待推送
+	ProductSyncStatusFailed  ProductSyncStatus = 2 // 同步失败
+	ProductSyncStatusLocal   ProductSyncStatus = 3 // 仅本地(AI草稿未上传)
 )
 
 // ProductEditStatus 编辑状态(AI流程)

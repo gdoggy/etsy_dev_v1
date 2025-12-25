@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"etsy_dev_v1_202512/internal/controller"
 	"etsy_dev_v1_202512/internal/model"
 	"etsy_dev_v1_202512/internal/repository"
@@ -10,120 +12,269 @@ import (
 	"etsy_dev_v1_202512/pkg/database"
 	"etsy_dev_v1_202512/pkg/net"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func main() {
-	// 1. utils 层
-	db := database.InitDB(
+	// 1. 初始化数据库
+	db := initDatabase()
+
+	// 2. 初始化依赖
+	deps := initDependencies(db)
+
+	// 3. 启动定时任务
+	initTasks(deps)
+
+	// 4. 初始化路由
+	r := router.SetupRouter(deps.Controllers)
+
+	// 5. 启动服务
+	startServer(r)
+}
+
+// ==================== 依赖容器 ====================
+
+// Dependencies 依赖容器
+type Dependencies struct {
+	DB          *gorm.DB
+	Dispatcher  net.Dispatcher
+	Controllers *router.Controllers
+	Services    *Services
+}
+
+// Services 服务集合
+type Services struct {
+	Proxy        *service.ProxyService
+	Developer    *service.DeveloperService
+	Auth         *service.AuthService
+	Shop         *service.ShopService
+	Shipping     *service.ShippingProfileService
+	ReturnPolicy *service.ReturnPolicyService
+	Product      *service.ProductService
+	Draft        *service.DraftService
+	Storage      *service.StorageService
+	AI           *service.AIService
+	OneBound     *service.OneBoundService
+}
+
+// ==================== 初始化函数 ====================
+
+// initDatabase 初始化数据库
+func initDatabase() *gorm.DB {
+	return database.InitDB(
 		// Manager
 		&model.SysUser{}, &model.ShopMember{},
 		// Account
 		&model.Proxy{}, &model.Developer{}, &model.DomainPool{},
 		// Shop
 		&model.Shop{}, &model.ShopAccount{}, &model.ShopSection{},
-		// shipping
+		// Shipping
 		&model.ShippingProfile{}, &model.ShippingDestination{}, &model.ShippingUpgrade{},
-		// policy
+		// Policy
 		&model.ReturnPolicy{},
 		// Product
 		&model.Product{}, &model.ProductImage{}, &model.ProductVariant{},
+		// Draft
+		&model.DraftTask{}, &model.DraftProduct{}, &model.DraftImage{},
 	)
+}
 
-	aiConfig := service.AIConfig{
-		ApiKey:     "",
-		TextModel:  "",
-		ImageModel: "",
-		VideoModel: "",
-	}
+// initDependencies 初始化所有依赖
+func initDependencies(db *gorm.DB) *Dependencies {
+	// -------- Repo 层 --------
+	repos := initRepositories(db)
 
-	// 2. 依赖注入 (层层组装)
-	// Repo 层
-	proxyRepo := repository.NewProxyRepo(db)
-	developerRepo := repository.NewDeveloperRepo(db)
-	shippingProfileRepo := repository.NewShippingProfileRepo(db)
-	shippingUpgradeRepo := repository.NewShippingUpgradeRepo(db)
-	shippingDestRepo := repository.NewShippingDestinationRepo(db)
-	shopSectionRepo := repository.NewShopSectionRepo(db)
-	returnPolicyRepo := repository.NewReturnPolicyRepo(db)
-	shopRepo := repository.NewShopRepo(db)
-	productRepo := repository.NewProductRepo(db)
-
-	// Service 层
-	// net
-	proxyService := service.NewProxyService(proxyRepo, shopRepo)
-	networkProvider := service.NewNetworkProvider(shopRepo, proxyService)
-
-	// 调度器
+	// -------- 基础服务 --------
+	proxyService := service.NewProxyService(repos.Proxy, repos.Shop)
+	networkProvider := service.NewNetworkProvider(repos.Shop, proxyService)
 	dispatcher := net.NewDispatcher(networkProvider)
 
-	// 消费者
-	aiService := service.NewAIService(aiConfig)
-	storageService := service.NewStorageService()
-	developerService := service.NewDeveloperService(developerRepo, shopRepo, dispatcher) // 修改此行
-	shippingService := service.NewShippingProfileService(
-		shippingProfileRepo,
-		shippingDestRepo,
-		shippingUpgradeRepo,
-		shopRepo,
-		developerRepo,
-		dispatcher,
+	// -------- 存储 & AI 服务 --------
+	storageSvc := initStorageService()
+	aiSvc := service.NewAIService(&service.AIConfig{
+		ApiKey: getEnv("GEMINI_API_KEY", ""),
+	}, storageSvc, repos.aiCallLog)
+	oneBoundSvc := service.NewOneBoundService(&service.OneBoundConfig{
+		APIKey:    getEnv("ONEBOUND_API_KEY", ""),
+		APISecret: getEnv("ONEBOUND_API_SECRET", ""),
+	})
+
+	// -------- 业务服务 --------
+	services := &Services{
+		Proxy:    proxyService,
+		Storage:  storageSvc,
+		AI:       aiSvc,
+		OneBound: oneBoundSvc,
+	}
+
+	services.Developer = service.NewDeveloperService(repos.Developer, repos.Shop, dispatcher)
+	services.Shipping = service.NewShippingProfileService(
+		repos.ShippingProfile, repos.ShippingDest, repos.ShippingUpgrade,
+		repos.Shop, repos.Developer, dispatcher,
 	)
-	returnPolicyService := service.NewReturnPolicyService(
-		returnPolicyRepo,
-		shopRepo,
-		developerRepo,
-		dispatcher,
+	services.ReturnPolicy = service.NewReturnPolicyService(
+		repos.ReturnPolicy, repos.Shop, repos.Developer, dispatcher,
 	)
-
-	shopService := service.NewShopService(
-		shopRepo,
-		shopSectionRepo,
-		shippingProfileRepo,
-		shippingDestRepo,
-		shippingUpgradeRepo,
-		returnPolicyRepo,
-		developerRepo,
-		dispatcher,
+	services.Shop = service.NewShopService(
+		repos.Shop, repos.ShopSection,
+		repos.ShippingProfile, repos.ShippingDest, repos.ShippingUpgrade,
+		repos.ReturnPolicy, repos.Developer, dispatcher,
 	)
-	authService := service.NewAuthService(shopService, dispatcher)
+	services.Auth = service.NewAuthService(services.Shop, dispatcher)
+	services.Product = service.NewProductService(repos.Product, repos.Shop, aiSvc, storageSvc, dispatcher)
+	services.Draft = service.NewDraftService(repos.draftUow, oneBoundSvc, aiSvc, storageSvc)
 
-	productService := service.NewProductService(productRepo, shopRepo, aiService, storageService, dispatcher)
+	// -------- Controller 层 --------
+	controllers := initControllers(services)
 
-	// Controller 层
-	proxyController := controller.NewProxyController(proxyService)
-	developController := controller.NewDeveloperController(developerService)
-	authController := controller.NewAuthController(authService)
-	shippingController := controller.NewShippingProfileController(shippingService)
-	returnPolicyController := controller.NewReturnPolicyController(returnPolicyService)
-	shopController := controller.NewShopController(shopService)
-	productController := controller.NewProductController(productService)
+	return &Dependencies{
+		DB:          db,
+		Dispatcher:  dispatcher,
+		Controllers: controllers,
+		Services:    services,
+	}
+}
 
-	// Task 层定时任务
-	proxyMonitorTask := task.NewProxyMonitor(proxyRepo, proxyService)
-	proxyMonitorTask.Start()
-	tokenTask := task.NewTokenTask(shopRepo, authService)
+// Repositories 仓库集合
+type Repositories struct {
+	Proxy           *repository.ProxyRepo
+	Developer       *repository.DeveloperRepo
+	Shop            *repository.ShopRepo
+	ShopSection     *repository.ShopSectionRepo
+	ShippingProfile *repository.ShippingProfileRepo
+	ShippingDest    *repository.ShippingDestinationRepo
+	ShippingUpgrade *repository.ShippingUpgradeRepo
+	ReturnPolicy    *repository.ReturnPolicyRepo
+	Product         *repository.ProductRepo
+	draftUow        *repository.DraftUnitOfWork
+	aiCallLog       repository.AICallLogRepository
+}
+
+// initRepositories 初始化所有仓库
+func initRepositories(db *gorm.DB) *Repositories {
+	return &Repositories{
+		Proxy:           repository.NewProxyRepo(db),
+		Developer:       repository.NewDeveloperRepo(db),
+		Shop:            repository.NewShopRepo(db),
+		ShopSection:     repository.NewShopSectionRepo(db),
+		ShippingProfile: repository.NewShippingProfileRepo(db),
+		ShippingDest:    repository.NewShippingDestinationRepo(db),
+		ShippingUpgrade: repository.NewShippingUpgradeRepo(db),
+		ReturnPolicy:    repository.NewReturnPolicyRepo(db),
+		Product:         repository.NewProductRepo(db),
+		draftUow:        repository.NewDraftUnitOfWork(db),
+		aiCallLog:       repository.NewAICallLogRepository(db),
+	}
+}
+
+// initStorageService 初始化存储服务
+func initStorageService() *service.StorageService {
+	storageSvc, err := service.NewStorageService(service.StorageConfig{
+		Provider:  getEnv("STORAGE_PROVIDER", "s3"),
+		Bucket:    getEnv("AWS_BUCKET", ""),
+		Region:    getEnv("AWS_REGION", ""),
+		AccessKey: getEnv("AWS_ACCESS_KEY_ID", ""),
+		SecretKey: getEnv("AWS_SECRET_ACCESS_KEY", ""),
+		CDNDomain: getEnv("AWS_CDN_DOMAIN", ""),
+		BasePath:  getEnv("STORAGE_BASE_PATH", "etsy-erp"),
+	})
+	if err != nil {
+		log.Printf("警告: 存储服务初始化失败: %v", err)
+		return nil
+	}
+	return storageSvc
+}
+
+// initControllers 初始化所有控制器
+func initControllers(svc *Services) *router.Controllers {
+	return &router.Controllers{
+		Proxy:        controller.NewProxyController(svc.Proxy),
+		Developer:    controller.NewDeveloperController(svc.Developer),
+		Auth:         controller.NewAuthController(svc.Auth),
+		Shop:         controller.NewShopController(svc.Shop),
+		Shipping:     controller.NewShippingProfileController(svc.Shipping),
+		ReturnPolicy: controller.NewReturnPolicyController(svc.ReturnPolicy),
+		Product:      controller.NewProductController(svc.Product),
+		Draft:        controller.NewDraftController(svc.Draft),
+	}
+}
+
+// ==================== 定时任务 ====================
+
+// initTasks 初始化定时任务
+func initTasks(deps *Dependencies) {
+	// 代理监控
+	proxyMonitor := task.NewProxyMonitor(
+		repository.NewProxyRepo(deps.DB),
+		deps.Services.Proxy,
+	)
+	proxyMonitor.Start()
+
+	// Token 刷新
+	tokenTask := task.NewTokenTask(
+		repository.NewShopRepo(deps.DB),
+		deps.Services.Auth,
+	)
 	tokenTask.Start()
 
-	// 3. 初始化路由
-	r := gin.Default()
-
-	// 4. 注册路由
-	router.InitRoutes(
-		r,
-		proxyController,
-		developController,
-		authController,
-		shopController,
-		shippingController,
-		returnPolicyController,
-		productController,
-	)
-
-	// 5. 启动服务
-	if err := r.Run(":8080"); err != nil {
-		log.Fatalf("服务启动失败: %v", err)
+	// 草稿清理
+	if deps.Services.Storage != nil {
+		cleanupTask := task.NewDraftCleanupTask(deps.DB, deps.Services.Storage.GetProvider())
+		cleanupTask.Start()
 	}
-	log.Println("服务已启动")
+
+	log.Println("定时任务已启动")
+}
+
+// ==================== 服务启动 ====================
+
+// startServer 启动服务
+func startServer(r *gin.Engine) {
+	port := getEnv("SERVER_PORT", "8080")
+
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: r,
+	}
+
+	// 异步启动服务
+	go func() {
+		log.Printf("服务启动在 :%s", port)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("服务启动失败: %v", err)
+		}
+	}()
+
+	// 等待退出信号
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("正在关闭服务...")
+
+	// 优雅关闭，最多等待 10 秒
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("服务强制关闭: %v", err)
+	}
+
+	log.Println("服务已退出")
+}
+
+// ==================== 工具函数 ====================
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }

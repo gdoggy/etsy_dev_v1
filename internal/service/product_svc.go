@@ -12,7 +12,6 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -102,7 +101,7 @@ func (s *ProductService) GenerateAIDraft(ctx context.Context, req *dto.AIGenerat
 		Description:    aiResult.Description,
 		Tags:           aiResult.Tags,
 		State:          model.ProductStateDraft,
-		SyncStatus:     int(model.SyncStatusLocal),
+		SyncStatus:     int(model.ProductSyncStatusLocal),
 		EditStatus:     model.EditStatusAIDraft,
 		SourceMaterial: req.SourceMaterial,
 		WhoMade:        "i_did",
@@ -135,7 +134,7 @@ func (s *ProductService) ApproveAIDraft(ctx context.Context, productID int64) er
 	}
 
 	product.EditStatus = model.EditStatusApproved
-	product.SyncStatus = int(model.SyncStatusPending)
+	product.SyncStatus = int(model.DraftSyncStatusPending)
 	return s.ProductRepo.Update(ctx, product)
 }
 
@@ -264,7 +263,7 @@ func (s *ProductService) CreateDraftListing(ctx context.Context, req *dto.Create
 		WhoMade:           defaultString(req.WhoMade, "i_did"),
 		WhenMade:          defaultString(req.WhenMade, "made_to_order"),
 		IsSupply:          req.IsSupply,
-		SyncStatus:        int(model.SyncStatusSynced),
+		SyncStatus:        int(model.ProductSyncStatusSynced),
 		SourceMaterial:    req.SourceMaterial,
 	}
 
@@ -332,7 +331,7 @@ func (s *ProductService) UpdateListing(ctx context.Context, req *dto.UpdateProdu
 
 		resp, err := s.Dispatcher.Send(ctx, shop.ID, httpReq)
 		if err != nil {
-			product.SyncStatus = int(model.SyncStatusFailed)
+			product.SyncStatus = int(model.DraftSyncStatusFailed)
 			product.SyncError = err.Error()
 			_ = s.ProductRepo.Update(ctx, product)
 			return fmt.Errorf("ETSY 更新失败: %v", err)
@@ -341,13 +340,13 @@ func (s *ProductService) UpdateListing(ctx context.Context, req *dto.UpdateProdu
 
 		if resp.StatusCode != 200 {
 			respBody, _ := io.ReadAll(resp.Body)
-			product.SyncStatus = int(model.SyncStatusFailed)
+			product.SyncStatus = int(model.DraftSyncStatusFailed)
 			product.SyncError = string(respBody)
 			_ = s.ProductRepo.Update(ctx, product)
 			return fmt.Errorf("ETSY API 错误 [%d]: %s", resp.StatusCode, string(respBody))
 		}
 
-		product.SyncStatus = int(model.SyncStatusSynced)
+		product.SyncStatus = int(model.ProductSyncStatusSynced)
 		product.SyncError = ""
 	}
 
@@ -391,7 +390,7 @@ func (s *ProductService) ActivateListing(ctx context.Context, productID int64) e
 	}
 
 	product.State = model.ProductStateActive
-	product.SyncStatus = int(model.SyncStatusSynced)
+	product.SyncStatus = int(model.ProductSyncStatusSynced)
 	return s.ProductRepo.Update(ctx, product)
 }
 
@@ -605,7 +604,7 @@ func (s *ProductService) UploadListingImage(ctx context.Context, productID int64
 		Height:      result.FullHeight,
 		Width:       result.FullWidth,
 		HexCode:     result.HexCode,
-		SyncStatus:  int(model.SyncStatusSynced),
+		SyncStatus:  int(model.ProductSyncStatusSynced),
 	}
 
 	if err := s.ProductRepo.CreateImage(ctx, image); err != nil {
@@ -632,7 +631,7 @@ func (s *ProductService) deleteEtsyListingInternal(ctx context.Context, shop *mo
 func (s *ProductService) mapEtsyListingToProduct(shopID int64, data map[string]interface{}) *model.Product {
 	product := &model.Product{
 		ShopID:     shopID,
-		SyncStatus: int(model.SyncStatusSynced),
+		SyncStatus: int(model.ProductSyncStatusSynced),
 	}
 
 	if v, ok := data["listing_id"].(float64); ok {
@@ -701,156 +700,6 @@ func defaultString(s, def string) string {
 		return def
 	}
 	return s
-}
-
-// AIProductResult AI 生成结果结构
-type AIProductResult struct {
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Tags        []string `json:"tags"`
-	Materials   []string `json:"materials,omitempty"`
-	Styles      []string `json:"styles,omitempty"`
-}
-
-// GenerateProductContent 调用 Gemini API 生成商品内容
-func (s *AIService) GenerateProductContent(ctx context.Context, source, style string) (*AIProductResult, error) {
-	// 构建 prompt
-	prompt := fmt.Sprintf(`You are an Etsy product listing expert. Based on the following product information, generate an optimized Etsy listing.
-
-Source Material:
-%s
-
-Style Hint: %s
-
-Requirements:
-1. Title: Max 140 characters, include relevant keywords, be descriptive and appealing
-2. Description: Detailed, engaging, include materials, dimensions, care instructions if applicable
-3. Tags: Exactly 13 relevant search tags (single words or short phrases)
-4. Materials: List of materials used (max 13)
-5. Styles: 1-2 style descriptors
-
-Respond in JSON format only:
-{
-  "title": "...",
-  "description": "...",
-  "tags": ["tag1", "tag2", ...],
-  "materials": ["material1", ...],
-  "styles": ["style1", ...]
-}`, source, style)
-
-	// 调用 Gemini API
-	result, err := s.CallGemini(ctx, prompt)
-	if err != nil {
-		return nil, fmt.Errorf("Gemini 调用失败: %v", err)
-	}
-
-	// 解析响应
-	var aiResult AIProductResult
-	if err := json.Unmarshal([]byte(result), &aiResult); err != nil {
-		// 尝试从响应中提取 JSON
-		jsonStart := strings.Index(result, "{")
-		jsonEnd := strings.LastIndex(result, "}")
-		if jsonStart >= 0 && jsonEnd > jsonStart {
-			jsonStr := result[jsonStart : jsonEnd+1]
-			if err := json.Unmarshal([]byte(jsonStr), &aiResult); err != nil {
-				return nil, fmt.Errorf("解析 AI 响应失败: %v", err)
-			}
-		} else {
-			return nil, fmt.Errorf("AI 响应格式无效")
-		}
-	}
-
-	// 验证必填字段
-	if aiResult.Title == "" {
-		return nil, fmt.Errorf("AI 未生成标题")
-	}
-	if aiResult.Description == "" {
-		return nil, fmt.Errorf("AI 未生成描述")
-	}
-
-	// 限制 tags 数量
-	if len(aiResult.Tags) > 13 {
-		aiResult.Tags = aiResult.Tags[:13]
-	}
-	if len(aiResult.Materials) > 13 {
-		aiResult.Materials = aiResult.Materials[:13]
-	}
-	if len(aiResult.Styles) > 2 {
-		aiResult.Styles = aiResult.Styles[:2]
-	}
-
-	// 限制 title 长度
-	if len(aiResult.Title) > 140 {
-		aiResult.Title = aiResult.Title[:137] + "..."
-	}
-
-	return &aiResult, nil
-}
-
-// CallGemini 调用 Gemini API
-func (s *AIService) CallGemini(ctx context.Context, prompt string) (string, error) {
-	if s.Config.ApiKey == "" {
-		return "", fmt.Errorf("Gemini API Key 未配置")
-	}
-
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=%s", s.Config.ApiKey)
-
-	reqBody := map[string]interface{}{
-		"contents": []map[string]interface{}{
-			{
-				"parts": []map[string]interface{}{
-					{"text": prompt},
-				},
-			},
-		},
-		"generationConfig": map[string]interface{}{
-			"temperature":     0.7,
-			"topK":            40,
-			"topP":            0.95,
-			"maxOutputTokens": 2048,
-		},
-	}
-
-	bodyBytes, _ := json.Marshal(reqBody)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
-	if err != nil {
-		return "", err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return "", fmt.Errorf("请求失败: %v", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("Gemini API 错误 [%d]: %s", resp.StatusCode, string(respBody))
-	}
-
-	// 解析响应
-	var geminiResp struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-		} `json:"candidates"`
-	}
-
-	if err := json.Unmarshal(respBody, &geminiResp); err != nil {
-		return "", fmt.Errorf("解析响应失败: %v", err)
-	}
-
-	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("Gemini 返回空响应")
-	}
-
-	return geminiResp.Candidates[0].Content.Parts[0].Text, nil
 }
 
 // ==================== DTO 转换方法 ====================

@@ -12,13 +12,32 @@ services:
     ports:
       - "8080:8080"
     environment:
-      # 这里的 host 必须填下面的 service 名字 'db'
+      # 服务配置
+      - SERVER_PORT=8080
+
+      # 数据库配置
       - DB_HOST=db
       - DB_PORT=5432
       - DB_USER=etsy_admin
       - DB_PASSWORD=1234
       - DB_NAME=etsy_farm
       - DB_TIMEZONE=Asia/Shanghai
+
+      # 万邦 API (1688数据抓取)
+      - ONEBOUND_API_KEY=${ONEBOUND_API_KEY:-}
+      - ONEBOUND_API_SECRET=${ONEBOUND_API_SECRET:-}
+
+      # Google Gemini AI
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+
+      # 云存储配置 (S3/COS)
+      - STORAGE_PROVIDER=${STORAGE_PROVIDER:-s3}
+      - AWS_BUCKET=${AWS_BUCKET:-}
+      - AWS_REGION=${AWS_REGION:-}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_CDN_DOMAIN=${AWS_CDN_DOMAIN:-}
+      - STORAGE_BASE_PATH=${STORAGE_BASE_PATH:-etsy-erp}
     depends_on:
       - db
     networks:
