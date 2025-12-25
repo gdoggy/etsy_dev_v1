@@ -11,4 +11,8 @@ type BaseModel struct {
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+
+	// --- 审计字段 ---
+	CreatedBy int64 `gorm:"comment:创建人ID"`
+	UpdatedBy int64 `gorm:"comment:更新人ID"`
 }

@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"etsy_dev_v1_202512/internal/model"
 	"etsy_dev_v1_202512/pkg/net"
 	"fmt"
@@ -44,15 +43,17 @@ func NewAuthService(shopService *ShopService, dispatcher net.Dispatcher) *AuthSe
 func (s *AuthService) GenerateLoginURL(ctx context.Context, shopID int64, region string) (string, error) {
 	// 1. 查店铺
 	var shop model.Shop
+	var err error
 	if shopID == 0 {
 		// 初次授权
 		if region == "" {
 			return "", fmt.Errorf("no shop region")
 		}
 		shop.Region = region
-		if err := s.ShopService.CreateShop(ctx, &shop); err != nil {
+		if err = s.ShopService.CreateShop(ctx, &shop); err != nil {
 			return "", err
 		}
+		shopID = shop.ID
 	} else {
 		existingShop, err := s.ShopService.shopRepo.GetByID(ctx, shopID)
 		if err != nil {
@@ -61,9 +62,13 @@ func (s *AuthService) GenerateLoginURL(ctx context.Context, shopID int64, region
 		shop = *existingShop
 	}
 
-	// 2. 严格校验
+	// 2. 严格校验，绑定开发者账号
 	if shop.DeveloperID == 0 || shop.Developer.ID == 0 {
-		return "", errors.New("该店铺未绑定开发者账号，请检查配置")
+		shop.Developer, err = s.ShopService.developerRepo.FindBestDevByRegion(ctx, shop.Region)
+		if err != nil {
+			return "", err
+		}
+		err = s.ShopService.shopRepo.UpdateFields(ctx, shop.ID, map[string]interface{}{"developer_id": shop.Developer.ID})
 	}
 
 	// 3. 生成 PKCE 安全参数

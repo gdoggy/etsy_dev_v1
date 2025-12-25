@@ -8,7 +8,6 @@ import (
 
 type Proxy struct {
 	BaseModel
-	AuditMixin
 	// 1. 基础配置
 	IP       string `gorm:"size:100;not null;index"` // IP 必须索引，防重复录入
 	Port     string `gorm:"size:10;not null"`        // String 类型兼容性更好

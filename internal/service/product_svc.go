@@ -1,324 +1,956 @@
 package service
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"etsy_dev_v1_202512/internal/api/dto"
 	"etsy_dev_v1_202512/internal/model"
 	"etsy_dev_v1_202512/internal/repository"
+	"etsy_dev_v1_202512/pkg/net"
+	"fmt"
+	"io"
+	"math"
+	"net/http"
+	"strings"
+	"time"
 )
 
 type ProductService struct {
-	ShopRepo  *repository.ShopRepo
-	AIService *AIService
-	Storage   *StorageService
+	ProductRepo *repository.ProductRepo
+	ShopRepo    *repository.ShopRepo
+	AIService   *AIService
+	Storage     *StorageService
+	Dispatcher  net.Dispatcher
 }
 
-func NewProductService(shopRepo *repository.ShopRepo, ai *AIService, storage *StorageService) *ProductService {
+func NewProductService(
+	productRepo *repository.ProductRepo,
+	shopRepo *repository.ShopRepo,
+	ai *AIService,
+	storage *StorageService,
+	dispatcher net.Dispatcher,
+) *ProductService {
 	return &ProductService{
-		ShopRepo:  shopRepo,
-		AIService: ai,
-		Storage:   storage,
+		ProductRepo: productRepo,
+		ShopRepo:    shopRepo,
+		AIService:   ai,
+		Storage:     storage,
+		Dispatcher:  dispatcher,
 	}
 }
 
+// ==================== 查询操作 ====================
+
+// GetShopProducts 获取店铺商品列表
 func (s *ProductService) GetShopProducts(shopID int64, page, pageSize int) ([]model.Product, int64, error) {
-	panic("implement me")
+	ctx := context.Background()
+	return s.ProductRepo.ListByShop(ctx, shopID, page, pageSize)
 }
 
-/*
-func (s *ProductService) SyncAndSaveListings(ctx context.Context, shopID int64) error {
-	// 1. 获取店铺鉴权信息
-	shop, err := s.ShopRepo.GetByID(ctx, shopID)
-	if err != nil {
-		return fmt.Errorf("店铺不存在: %v", err)
-	}
-
-	if shop.TokenStatus == model.TokenStatusInvalid {
-		return fmt.Errorf("授权已失效，请在店铺列表重新授权")
-	}
-
-	// 2. 循环分页
-	limit := 100 // 建议设为 100，效率最高
-	offset := 0
-	var allProducts []model.Product // 用于暂存所有拉取到的商品
-
-	fmt.Println("开始全量同步商品...")
-
-	for {
-		// 3. 动态拼接 URL (带分页参数)
-		// 接口文档: /v3/application/shops/{shop_id}/listings/active
-		// 参数: limit=100, offset=0
-		apiUrl := fmt.Sprintf(
-			"https://api.etsy.com/v3/application/shop/%d/listings/state=active?limit=%d&offset=%d",
-			shop.EtsyShopID, limit, offset,
-		)
-
-		var res etsy.ProductListingsResp
-		resp, err := client.R().
-			SetHeader("x-api-key", shop.Developer.APIKey).
-			SetHeader("Authorization", "Bearer "+shop.AccessToken).
-			SetResult(&res). // 解析到 DTO
-			Get(apiUrl)
-
-		if err != nil {
-			return fmt.Errorf("网络请求失败: %v", err)
-		}
-		if resp.StatusCode() != 200 {
-			return fmt.Errorf("API 异常 [%d]: %s", resp.StatusCode(), resp.String())
-		}
-
-		// 4. 数据转换 (DTO -> Model) 并放入切片
-		for _, itemDTO := range res.Results {
-			// 调用私有方法
-			productModel := ToProductModel(itemDTO)
-			allProducts = append(allProducts, *productModel)
-		}
-
-		fmt.Printf("   >> 本页拉取 %d 条 (Offset: %d)\n", len(res.Results), offset)
-
-		// 5. 循环终止条件
-		// 如果当前页拿到的数据少于 limit，说明后面没数据了
-		if len(res.Results) < limit {
-			break
-		}
-
-		// 否则，翻页
-		offset += limit
-		// 建议休眠一下，防止触发 QPS 限制
-		time.Sleep(1 * time.Second)
-	}
-
-	if len(allProducts) == 0 {
-		fmt.Println("该店铺没有在线商品")
-		return nil
-	}
-
-	// 6. 批量入库 (UPSERT 逻辑)
-	// 这里的逻辑是：如果 listing_id 冲突，就更新后面列出的字段
-	err := s.ShopRepo.db.Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "listing_id"}}, // 冲突检测列
-		DoUpdates: clause.AssignmentColumns([]string{
-			"title", "description", "state", "url",
-			"price_amount", "quantity", "views", "num_favorers",
-			"tags", "last_modified_tsz", "updated_at",
-		}),
-	}).Create(&allProducts).Error
-
-	if err != nil {
-		return fmt.Errorf("数据库保存失败: %v", err)
-	}
-
-	fmt.Printf("同步完成！共更新/插入 %d 个商品\n", len(allProducts))
-	return nil
+// GetProductByID 获取商品详情
+func (s *ProductService) GetProductByID(ctx context.Context, id int64) (*model.Product, error) {
+	return s.ProductRepo.GetByID(ctx, id)
 }
 
-func (s *ProductService) GetShopProducts(shopID uint, page, pageSize int) ([]model.Product, int64, error) {
-	var products []model.Product
+// SearchProducts 搜索商品
+func (s *ProductService) SearchProducts(ctx context.Context, shopID int64, keyword string, page, pageSize int) ([]model.Product, int64, error) {
+	return s.ProductRepo.SearchByTitle(ctx, shopID, keyword, page, pageSize)
+}
+
+// GetProductStats 获取店铺商品统计
+func (s *ProductService) GetProductStats(ctx context.Context, shopID int64) (*dto.ProductStatsResp, error) {
+	stats, err := s.ProductRepo.CountByShopAndState(ctx, shopID)
+	if err != nil {
+		return nil, err
+	}
+
 	var total int64
-
-	// 基础查询
-	query := s.ShopRepo.db.Model(&model.Product{}).Where("shop_id = ?", shopID)
-
-	// 1. 查总数
-	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
+	byState := make(map[string]int64)
+	for state, count := range stats {
+		byState[string(state)] = count
+		total += count
 	}
 
-	// 2. 查列表 (分页)
-	offset := (page - 1) * pageSize
-	err := query.Order("updated_at DESC"). // 按更新时间倒序
-						Limit(pageSize).
-						Offset(offset).
-						Find(&products).Error
-
-	if err != nil {
-		return nil, 0, err
-	}
-
-	return products, total, nil
+	return &dto.ProductStatsResp{
+		ShopID:  shopID,
+		Total:   total,
+		ByState: byState,
+	}, nil
 }
 
-// CreateDraftListing 创建 Etsy 草稿商品
-func (s *ProductService) CreateDraftListing(shopID int64, req etsy.CreateListingReq) (int64, error) {
-	// 1. 获取店铺
-	var shop model.Shop
-	if err := s.ShopRepo.db.Preload("Proxy").Preload("Developer").First(&shop, shopID).Error; err != nil {
-		return 0, fmt.Errorf("店铺不存在")
+// ==================== AI 草稿流程 ====================
+
+// GenerateAIDraft 调用 AI 生成商品草稿
+func (s *ProductService) GenerateAIDraft(ctx context.Context, req *dto.AIGenerateReq) (*model.Product, error) {
+	// 1. 获取店铺信息
+	shop, err := s.ShopRepo.GetByID(ctx, req.ShopID)
+	if err != nil {
+		return nil, fmt.Errorf("店铺不存在: %v", err)
 	}
 
-	client := NewProxiedClient(shop.Proxy)
+	// 2. 调用 AI 服务生成内容
+	aiResult, err := s.AIService.GenerateProductContent(ctx, req.SourceMaterial, req.StyleHint)
+	if err != nil {
+		return nil, fmt.Errorf("AI 生成失败: %v", err)
+	}
 
-	// 2. 价格处理 (必须使用 math.Round 修正精度)
-	// 变量在这里定义，确保作用域覆盖整个函数
+	// 3. 构建本地草稿
+	product := &model.Product{
+		ShopID:         shop.ID,
+		Title:          aiResult.Title,
+		Description:    aiResult.Description,
+		Tags:           aiResult.Tags,
+		State:          model.ProductStateDraft,
+		SyncStatus:     int(model.SyncStatusLocal),
+		EditStatus:     model.EditStatusAIDraft,
+		SourceMaterial: req.SourceMaterial,
+		WhoMade:        "i_did",
+		WhenMade:       "made_to_order",
+		CurrencyCode:   shop.CurrencyCode,
+		PriceDivisor:   100,
+	}
+
+	if req.TargetCategory > 0 {
+		product.TaxonomyID = req.TargetCategory
+	}
+
+	// 4. 保存到本地数据库
+	if err := s.ProductRepo.Create(ctx, product); err != nil {
+		return nil, fmt.Errorf("保存草稿失败: %v", err)
+	}
+
+	return product, nil
+}
+
+// ApproveAIDraft 审核通过 AI 草稿
+func (s *ProductService) ApproveAIDraft(ctx context.Context, productID int64) error {
+	product, err := s.ProductRepo.GetByID(ctx, productID)
+	if err != nil {
+		return err
+	}
+
+	if product.EditStatus != model.EditStatusAIDraft && product.EditStatus != model.EditStatusReviewing {
+		return fmt.Errorf("当前状态不允许审核")
+	}
+
+	product.EditStatus = model.EditStatusApproved
+	product.SyncStatus = int(model.SyncStatusPending)
+	return s.ProductRepo.Update(ctx, product)
+}
+
+// ==================== Etsy 同步操作 ====================
+
+// CreateDraftListing 创建 Etsy 草稿并同步
+func (s *ProductService) CreateDraftListing(ctx context.Context, req *dto.CreateProductReq) (*model.Product, error) {
+	// 1. 获取店铺及鉴权信息 (GetByID 已 Preload Developer & Proxy)
+	shop, err := s.ShopRepo.GetByID(ctx, req.ShopID)
+	if err != nil {
+		return nil, fmt.Errorf("店铺不存在: %v", err)
+	}
+	if shop.TokenStatus == model.TokenStatusInvalid {
+		return nil, fmt.Errorf("授权已失效，请重新授权")
+	}
+
+	// 2. 构建 Etsy API 请求体
 	priceAmount := int64(math.Round(req.Price * 100))
-
-	currency := shop.CurrencyCode
+	currency := req.Currency
 	if currency == "" {
-		currency = "USD"
+		currency = shop.CurrencyCode
+		if currency == "" {
+			currency = "USD"
+		}
 	}
 
-	priceObj := map[string]interface{}{
-		"amount":        priceAmount,
-		"divisor":       100,
-		"currency_code": currency,
-	}
-
-	// 3. 构建 Payload
 	payload := map[string]interface{}{
-		"quantity":            req.Quantity,
-		"title":               req.Title,
-		"description":         req.Description,
-		"price":               priceObj,
+		"quantity":    req.Quantity,
+		"title":       req.Title,
+		"description": req.Description,
+		"price": map[string]interface{}{
+			"amount":        priceAmount,
+			"divisor":       100,
+			"currency_code": currency,
+		},
 		"taxonomy_id":         req.TaxonomyID,
 		"shipping_profile_id": req.ShippingProfileID,
-		"who_made":            req.WhoMade,
-		"when_made":           req.WhenMade,
-		"type":                req.Type,
-		"state":               "draft",
-		"tags":                req.Tags,
+		"who_made":            defaultString(req.WhoMade, "i_did"),
+		"when_made":           defaultString(req.WhenMade, "made_to_order"),
+		"is_supply":           req.IsSupply,
 	}
 
+	// 可选字段
+	if req.ReturnPolicyID > 0 {
+		payload["return_policy_id"] = req.ReturnPolicyID
+	}
+	if len(req.Tags) > 0 {
+		payload["tags"] = req.Tags
+	}
+	if len(req.Materials) > 0 {
+		payload["materials"] = req.Materials
+	}
+	if len(req.Styles) > 0 {
+		payload["styles"] = req.Styles
+	}
 	if len(req.ImageIDs) > 0 {
 		payload["image_ids"] = req.ImageIDs
 	}
-	// 防御性添加 readiness_state_id (如果前端传了)
-	if req.ReadinessStateID > 0 {
-		payload["readiness_state_id"] = req.ReadinessStateID
+	if req.ShopSectionID > 0 {
+		payload["shop_section_id"] = req.ShopSectionID
 	}
 
-	// 4. 发起请求
-	url := fmt.Sprintf("https://api.etsy.com/v3/application/shops/%d/listings", shop.EtsyShopID)
+	// 物理属性
+	if req.ItemWeight > 0 {
+		payload["item_weight"] = req.ItemWeight
+		payload["item_weight_unit"] = defaultString(req.ItemWeightUnit, "oz")
+	}
+	if req.ItemLength > 0 || req.ItemWidth > 0 || req.ItemHeight > 0 {
+		payload["item_length"] = req.ItemLength
+		payload["item_width"] = req.ItemWidth
+		payload["item_height"] = req.ItemHeight
+		payload["item_dimensions_unit"] = defaultString(req.ItemDimensionsUnit, "in")
+	}
 
-	type createResp struct {
+	// 3. 构建 HTTP 请求
+	url := fmt.Sprintf("https://api.etsy.com/v3/application/shops/%d/listings", shop.EtsyShopID)
+	bodyBytes, _ := json.Marshal(payload)
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("构建请求失败: %v", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-api-key", shop.Developer.ApiKey)
+	httpReq.Header.Set("Authorization", "Bearer "+shop.AccessToken)
+
+	// 4. 通过 Dispatcher 发送 (自动处理代理)
+	resp, err := s.Dispatcher.Send(ctx, shop.ID, httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("网络请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != 201 {
+		return nil, fmt.Errorf("ETSY API 错误 [%d]: %s", resp.StatusCode, string(respBody))
+	}
+
+	// 5. 解析响应
+	var result struct {
 		ListingID int64 `json:"listing_id"`
 	}
-	var res createResp
-	var errResp map[string]interface{}
-
-	resp, err := client.R().
-		SetHeader("x-api-key", shop.Developer.APIKey).
-		SetHeader("Authorization", "Bearer "+shop.AccessToken).
-		SetHeader("Content-Type", "application/json").
-		SetBody(payload).
-		SetResult(&res).
-		SetError(&errResp).
-		Post(url)
-
-	if err != nil {
-		return 0, fmt.Errorf("网络请求失败: %v", err)
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %v", err)
 	}
 
-	if resp.StatusCode() != 201 {
-		errJson, _ := json.Marshal(errResp)
-		return 0, fmt.Errorf("ETSY Error (Code %d): %s", resp.StatusCode(), string(errJson))
-	}
-
-	// 5. 入库与事务回滚 (Transaction & Rollback)
-	newProduct := model.Product{
-		ShopID:       shop.ID,
-		ListingID:    res.ListingID,
-		Title:        req.Title,
-		Description:  req.Description,
-		State:        "draft",
-		PriceAmount:  priceAmount,
-		PriceDivisor: 100,
-		CurrencyCode: currency,
-		Quantity:     req.Quantity,
-		Tags:         req.Tags,
-		// 建议补齐关联字段，虽然 GORM 不强制
-		ShippingProfileID: req.ShippingProfileID,
+	// 6. 本地入库
+	product := &model.Product{
+		ShopID:            shop.ID,
+		ListingID:         result.ListingID,
+		Title:             req.Title,
+		Description:       req.Description,
+		Tags:              req.Tags,
+		Materials:         req.Materials,
+		Styles:            req.Styles,
+		State:             model.ProductStateDraft,
+		PriceAmount:       priceAmount,
+		PriceDivisor:      100,
+		CurrencyCode:      currency,
+		Quantity:          req.Quantity,
 		TaxonomyID:        req.TaxonomyID,
+		ShippingProfileID: req.ShippingProfileID,
+		ReturnPolicyID:    req.ReturnPolicyID,
+		ShopSectionID:     req.ShopSectionID,
+		WhoMade:           defaultString(req.WhoMade, "i_did"),
+		WhenMade:          defaultString(req.WhenMade, "made_to_order"),
+		IsSupply:          req.IsSupply,
+		SyncStatus:        int(model.SyncStatusSynced),
+		SourceMaterial:    req.SourceMaterial,
 	}
 
-	// 严谨处理：如果入库失败，必须回滚远程操作
-	if err = s.ShopRepo.db.Create(&newProduct).Error; err != nil {
-		s.deleteEtsyListingInternal(client, shop.EtsyShopID, res.ListingID)
-		return 0, fmt.Errorf("本地入库失败(已回滚远程草稿): %v", err)
+	if err := s.ProductRepo.Create(ctx, product); err != nil {
+		// 回滚: 删除远程草稿
+		s.deleteEtsyListingInternal(ctx, shop, result.ListingID)
+		return nil, fmt.Errorf("本地入库失败(已回滚远程草稿): %v", err)
 	}
 
-	return res.ListingID, nil
+	return product, nil
 }
 
-// deleteEtsyListingInternal 仅用于创建失败时的回滚
-func (s *ProductService) deleteEtsyListingInternal(client *resty.Client, shopEtsyID int64, listingID int64) {
-	// DELETE /v3/application/shops/{shop_id}/listings/{listing_id}
-	url := fmt.Sprintf("https://api.etsy.com/v3/application/shops/%d/listings/%d", shopEtsyID, listingID)
-
-	// 这是一个补救操作，尽最大努力执行
-	_, err := client.R().Delete(url)
+// UpdateListing 更新商品 (先推 Etsy，再更新本地)
+func (s *ProductService) UpdateListing(ctx context.Context, req *dto.UpdateProductReq) error {
+	// 1. 获取商品
+	product, err := s.ProductRepo.GetByID(ctx, req.ID)
 	if err != nil {
-		// 如果回滚都失败了，这才是真正的灾难，必须记录高危日志 (Sentry/Log)
-		fmt.Printf("[CRITICAL] 严重故障：商品入库失败且远程回滚失败！Shop: %d, Listing: %d, Err: %v\n", shopEtsyID, listingID, err)
-	} else {
-		fmt.Printf("[Rollback] 商品入库失败，已自动删除 Etsy 远程草稿。Listing: %d\n", listingID)
+		return fmt.Errorf("商品不存在: %v", err)
 	}
+
+	// 2. 获取店铺
+	shop, err := s.ShopRepo.GetByID(ctx, product.ShopID)
+	if err != nil {
+		return err
+	}
+
+	// 3. 构建更新 payload
+	payload := make(map[string]interface{})
+	if req.Title != nil {
+		payload["title"] = *req.Title
+		product.Title = *req.Title
+	}
+	if req.Description != nil {
+		payload["description"] = *req.Description
+		product.Description = *req.Description
+	}
+	if req.Price != nil {
+		priceAmount := int64(math.Round(*req.Price * 100))
+		payload["price"] = map[string]interface{}{
+			"amount":        priceAmount,
+			"divisor":       100,
+			"currency_code": product.CurrencyCode,
+		}
+		product.PriceAmount = priceAmount
+	}
+	if req.Quantity != nil {
+		payload["quantity"] = *req.Quantity
+		product.Quantity = *req.Quantity
+	}
+	if len(req.Tags) > 0 {
+		payload["tags"] = req.Tags
+		product.Tags = req.Tags
+	}
+
+	// 4. 如果商品已上传 Etsy，则先推送
+	if product.ListingID > 0 && len(payload) > 0 {
+		url := fmt.Sprintf("https://api.etsy.com/v3/application/shops/%d/listings/%d",
+			shop.EtsyShopID, product.ListingID)
+
+		bodyBytes, _ := json.Marshal(payload)
+		httpReq, _ := http.NewRequestWithContext(ctx, http.MethodPatch, url, bytes.NewReader(bodyBytes))
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("x-api-key", shop.Developer.ApiKey)
+		httpReq.Header.Set("Authorization", "Bearer "+shop.AccessToken)
+
+		resp, err := s.Dispatcher.Send(ctx, shop.ID, httpReq)
+		if err != nil {
+			product.SyncStatus = int(model.SyncStatusFailed)
+			product.SyncError = err.Error()
+			_ = s.ProductRepo.Update(ctx, product)
+			return fmt.Errorf("ETSY 更新失败: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 200 {
+			respBody, _ := io.ReadAll(resp.Body)
+			product.SyncStatus = int(model.SyncStatusFailed)
+			product.SyncError = string(respBody)
+			_ = s.ProductRepo.Update(ctx, product)
+			return fmt.Errorf("ETSY API 错误 [%d]: %s", resp.StatusCode, string(respBody))
+		}
+
+		product.SyncStatus = int(model.SyncStatusSynced)
+		product.SyncError = ""
+	}
+
+	// 5. 更新本地
+	return s.ProductRepo.Update(ctx, product)
 }
 
-// SyncShippingProfiles 同步运费模板
-func (s *ProductService) SyncShippingProfiles(shopID uint) error {
-	// 1. 准备 Shop & Client
-	var shop model.Shop
-	if err := s.ShopRepo.db.Preload("Proxy").Preload("Developer").First(&shop, shopID).Error; err != nil {
+// ActivateListing 上架商品
+func (s *ProductService) ActivateListing(ctx context.Context, productID int64) error {
+	product, err := s.ProductRepo.GetByID(ctx, productID)
+	if err != nil {
 		return err
 	}
-	client := NewProxiedClient(shop.Proxy)
-
-	// 2. 请求 Etsy
-	url := fmt.Sprintf("https://api.etsy.com/v3/application/shops/%d/shipping-profiles", shop.EtsyShopID)
-	var res struct {
-		Results []struct {
-			ShippingProfileID int64  `json:"shipping_profile_id"`
-			Title             string `json:"title"`
-			MinProcessingDays int    `json:"min_processing_days"`
-			MaxProcessingDays int    `json:"max_processing_days"`
-			OriginCountryIso  string `json:"origin_country_iso"`
-		} `json:"results"`
+	if product.ListingID == 0 {
+		return fmt.Errorf("商品尚未上传到 Etsy")
 	}
 
-	if _, err := client.R().
-		SetHeader("x-api-key", shop.Developer.APIKey).
-		SetHeader("Authorization", "Bearer "+shop.AccessToken).
-		SetResult(&res).
-		Get(url); err != nil {
+	shop, err := s.ShopRepo.GetByID(ctx, product.ShopID)
+	if err != nil {
 		return err
 	}
 
-	if len(res.Results) == 0 {
+	url := fmt.Sprintf("https://api.etsy.com/v3/application/shops/%d/listings/%d",
+		shop.EtsyShopID, product.ListingID)
+
+	bodyBytes, _ := json.Marshal(map[string]interface{}{"state": "active"})
+	httpReq, _ := http.NewRequestWithContext(ctx, http.MethodPatch, url, bytes.NewReader(bodyBytes))
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-api-key", shop.Developer.ApiKey)
+	httpReq.Header.Set("Authorization", "Bearer "+shop.AccessToken)
+
+	resp, err := s.Dispatcher.Send(ctx, shop.ID, httpReq)
+	if err != nil {
+		return fmt.Errorf("上架失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("ETSY API 错误 [%d]: %s", resp.StatusCode, string(respBody))
+	}
+
+	product.State = model.ProductStateActive
+	product.SyncStatus = int(model.SyncStatusSynced)
+	return s.ProductRepo.Update(ctx, product)
+}
+
+// DeactivateListing 下架商品
+func (s *ProductService) DeactivateListing(ctx context.Context, productID int64) error {
+	product, err := s.ProductRepo.GetByID(ctx, productID)
+	if err != nil {
+		return err
+	}
+	if product.ListingID == 0 {
+		return fmt.Errorf("商品尚未上传到 Etsy")
+	}
+
+	shop, err := s.ShopRepo.GetByID(ctx, product.ShopID)
+	if err != nil {
+		return err
+	}
+
+	url := fmt.Sprintf("https://api.etsy.com/v3/application/shops/%d/listings/%d",
+		shop.EtsyShopID, product.ListingID)
+
+	bodyBytes, _ := json.Marshal(map[string]interface{}{"state": "inactive"})
+	httpReq, _ := http.NewRequestWithContext(ctx, http.MethodPatch, url, bytes.NewReader(bodyBytes))
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-api-key", shop.Developer.ApiKey)
+	httpReq.Header.Set("Authorization", "Bearer "+shop.AccessToken)
+
+	resp, err := s.Dispatcher.Send(ctx, shop.ID, httpReq)
+	if err != nil {
+		return fmt.Errorf("下架失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("ETSY API 错误 [%d]: %s", resp.StatusCode, string(respBody))
+	}
+
+	product.State = model.ProductStateInactive
+	return s.ProductRepo.Update(ctx, product)
+}
+
+// DeleteListing 删除商品
+func (s *ProductService) DeleteListing(ctx context.Context, productID int64) error {
+	product, err := s.ProductRepo.GetByID(ctx, productID)
+	if err != nil {
+		return err
+	}
+
+	// 如果已上传 Etsy，先删除远程
+	if product.ListingID > 0 {
+		shop, err := s.ShopRepo.GetByID(ctx, product.ShopID)
+		if err != nil {
+			return err
+		}
+
+		url := fmt.Sprintf("https://api.etsy.com/v3/application/listings/%d", product.ListingID)
+		httpReq, _ := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+		httpReq.Header.Set("x-api-key", shop.Developer.ApiKey)
+		httpReq.Header.Set("Authorization", "Bearer "+shop.AccessToken)
+
+		resp, err := s.Dispatcher.Send(ctx, shop.ID, httpReq)
+		if err != nil {
+			return fmt.Errorf("删除远程失败: %v", err)
+		}
+		defer resp.Body.Close()
+
+		// 404 也视为删除成功
+		if resp.StatusCode != 204 && resp.StatusCode != 404 {
+			respBody, _ := io.ReadAll(resp.Body)
+			return fmt.Errorf("ETSY API 错误 [%d]: %s", resp.StatusCode, string(respBody))
+		}
+	}
+
+	// 本地软删除
+	return s.ProductRepo.Delete(ctx, productID)
+}
+
+// ==================== 批量同步 ====================
+
+// SyncListingsFromEtsy 从 Etsy 全量同步商品
+func (s *ProductService) SyncListingsFromEtsy(ctx context.Context, shopID int64) error {
+	shop, err := s.ShopRepo.GetByID(ctx, shopID)
+	if err != nil {
+		return err
+	}
+	if shop.TokenStatus == model.TokenStatusInvalid {
+		return fmt.Errorf("授权已失效")
+	}
+
+	var allProducts []model.Product
+	limit := 100
+	offset := 0
+
+	for {
+		url := fmt.Sprintf("https://api.etsy.com/v3/application/shops/%d/listings?limit=%d&offset=%d",
+			shop.EtsyShopID, limit, offset)
+
+		httpReq, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		httpReq.Header.Set("x-api-key", shop.Developer.ApiKey)
+		httpReq.Header.Set("Authorization", "Bearer "+shop.AccessToken)
+
+		resp, err := s.Dispatcher.Send(ctx, shop.ID, httpReq)
+		if err != nil {
+			return fmt.Errorf("同步失败: %v", err)
+		}
+
+		respBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if resp.StatusCode != 200 {
+			return fmt.Errorf("ETSY API 错误 [%d]: %s", resp.StatusCode, string(respBody))
+		}
+
+		var result struct {
+			Count   int                      `json:"count"`
+			Results []map[string]interface{} `json:"results"`
+		}
+		if err := json.Unmarshal(respBody, &result); err != nil {
+			return fmt.Errorf("解析响应失败: %v", err)
+		}
+
+		for _, item := range result.Results {
+			product := s.mapEtsyListingToProduct(shop.ID, item)
+			allProducts = append(allProducts, *product)
+		}
+
+		if len(result.Results) < limit {
+			break
+		}
+		offset += limit
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	if len(allProducts) == 0 {
 		return nil
 	}
 
-	// 3. 构造数据切片
-	var profiles []model.ShippingProfile
-	for _, item := range res.Results {
-		profiles = append(profiles, model.ShippingProfile{
-			ShopID:        shop.ID,
-			EtsyProfileID: item.ShippingProfileID,
-			Title:         item.Title,
-			MinProcessing: item.MinProcessingDays,
-			MaxProcessing: item.MaxProcessingDays,
-			OriginCountry: item.OriginCountryIso,
-		})
-	}
-
-	// 4. 批量 Upsert (核心逻辑)
-	// 依赖于 idx_shop_profile 唯一索引
-	err := s.ShopRepo.db.Clauses(clause.OnConflict{
-		// 冲突列 (根据哪个字段判断重复)
-		Columns: []clause.Column{{Name: "shop_id"}, {Name: "etsy_profile_id"}},
-
-		// 冲突时更新哪些字段 (Do Updates)
-		// 注意：不要更新 CreatedAt
-		DoUpdates: clause.AssignmentColumns([]string{
-			"title",
-			"min_processing",
-			"max_processing",
-			"origin_country",
-			"updated_at",
-		}),
-	}).Create(&profiles).Error // 直接传切片，GORM 会自动批量插入
-
-	if err != nil {
-		return fmt.Errorf("同步运费模板失败: %v", err)
-	}
-
-	return nil
+	return s.ProductRepo.BatchUpsert(ctx, allProducts)
 }
-*/
+
+// ==================== 图片操作 ====================
+
+// UploadListingImage 上传图片到 Etsy
+func (s *ProductService) UploadListingImage(ctx context.Context, productID int64, imageData []byte, filename string, rank int) (*model.ProductImage, error) {
+	// 1. 获取商品
+	product, err := s.ProductRepo.GetByID(ctx, productID)
+	if err != nil {
+		return nil, fmt.Errorf("商品不存在: %v", err)
+	}
+	if product.ListingID == 0 {
+		return nil, fmt.Errorf("商品尚未上传到 Etsy，请先创建 Etsy 草稿")
+	}
+
+	// 2. 获取店铺
+	shop, err := s.ShopRepo.GetByID(ctx, product.ShopID)
+	if err != nil {
+		return nil, fmt.Errorf("店铺不存在: %v", err)
+	}
+
+	// 3. 构建 multipart 请求
+	url := fmt.Sprintf("https://api.etsy.com/v3/application/shops/%d/listings/%d/images",
+		shop.EtsyShopID, product.ListingID)
+
+	resp, err := s.Dispatcher.SendMultipart(ctx, shop.ID, &net.MultipartRequest{
+		URL: url,
+		Headers: map[string]string{
+			"x-api-key":     shop.Developer.ApiKey,
+			"Authorization": "Bearer " + shop.AccessToken,
+		},
+		Files: map[string]net.FileData{
+			"image": {Data: imageData, Filename: filename},
+		},
+		Fields: map[string]string{
+			"rank": fmt.Sprintf("%d", rank),
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("上传请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != 201 {
+		return nil, fmt.Errorf("ETSY API 错误 [%d]: %s", resp.StatusCode, string(respBody))
+	}
+
+	// 4. 解析响应
+	var result struct {
+		ListingImageID int64  `json:"listing_image_id"`
+		ListingID      int64  `json:"listing_id"`
+		Rank           int    `json:"rank"`
+		UrlFullxfull   string `json:"url_fullxfull"`
+		Url570xN       string `json:"url_570xN"`
+		UrlThumb       string `json:"url_75x75"`
+		FullHeight     int    `json:"full_height"`
+		FullWidth      int    `json:"full_width"`
+		HexCode        string `json:"hex_code"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %v", err)
+	}
+
+	// 5. 本地入库
+	image := &model.ProductImage{
+		ProductID:   productID,
+		EtsyImageID: result.ListingImageID,
+		EtsyUrl:     result.UrlFullxfull,
+		Rank:        result.Rank,
+		Height:      result.FullHeight,
+		Width:       result.FullWidth,
+		HexCode:     result.HexCode,
+		SyncStatus:  int(model.SyncStatusSynced),
+	}
+
+	if err := s.ProductRepo.CreateImage(ctx, image); err != nil {
+		return nil, fmt.Errorf("图片入库失败: %v", err)
+	}
+
+	return image, nil
+}
+
+// ==================== 私有方法 ====================
+
+func (s *ProductService) deleteEtsyListingInternal(ctx context.Context, shop *model.Shop, listingID int64) {
+	url := fmt.Sprintf("https://api.etsy.com/v3/application/listings/%d", listingID)
+	httpReq, _ := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+	httpReq.Header.Set("x-api-key", shop.Developer.ApiKey)
+	httpReq.Header.Set("Authorization", "Bearer "+shop.AccessToken)
+
+	_, err := s.Dispatcher.Send(ctx, shop.ID, httpReq)
+	if err != nil {
+		fmt.Printf("[CRITICAL] 回滚失败: Shop=%d, Listing=%d, Err=%v\n", shop.ID, listingID, err)
+	}
+}
+
+func (s *ProductService) mapEtsyListingToProduct(shopID int64, data map[string]interface{}) *model.Product {
+	product := &model.Product{
+		ShopID:     shopID,
+		SyncStatus: int(model.SyncStatusSynced),
+	}
+
+	if v, ok := data["listing_id"].(float64); ok {
+		product.ListingID = int64(v)
+	}
+	if v, ok := data["user_id"].(float64); ok {
+		product.UserID = int64(v)
+	}
+	if v, ok := data["title"].(string); ok {
+		product.Title = v
+	}
+	if v, ok := data["description"].(string); ok {
+		product.Description = v
+	}
+	if v, ok := data["state"].(string); ok {
+		product.State = model.ProductState(v)
+	}
+	if v, ok := data["url"].(string); ok {
+		product.Url = v
+	}
+	if v, ok := data["quantity"].(float64); ok {
+		product.Quantity = int(v)
+	}
+	if v, ok := data["views"].(float64); ok {
+		product.Views = int(v)
+	}
+	if v, ok := data["num_favorers"].(float64); ok {
+		product.NumFavorers = int(v)
+	}
+
+	// 价格
+	if price, ok := data["price"].(map[string]interface{}); ok {
+		if v, ok := price["amount"].(float64); ok {
+			product.PriceAmount = int64(v)
+		}
+		if v, ok := price["divisor"].(float64); ok {
+			product.PriceDivisor = int64(v)
+		}
+		if v, ok := price["currency_code"].(string); ok {
+			product.CurrencyCode = v
+		}
+	}
+
+	// 标签
+	if tags, ok := data["tags"].([]interface{}); ok {
+		for _, t := range tags {
+			if str, ok := t.(string); ok {
+				product.Tags = append(product.Tags, str)
+			}
+		}
+	}
+
+	// 时间戳
+	if v, ok := data["creation_timestamp"].(float64); ok {
+		product.EtsyCreationTS = int64(v)
+	}
+	if v, ok := data["last_modified_timestamp"].(float64); ok {
+		product.EtsyLastModifiedTS = int64(v)
+	}
+
+	return product
+}
+
+func defaultString(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
+}
+
+// AIProductResult AI 生成结果结构
+type AIProductResult struct {
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Tags        []string `json:"tags"`
+	Materials   []string `json:"materials,omitempty"`
+	Styles      []string `json:"styles,omitempty"`
+}
+
+// GenerateProductContent 调用 Gemini API 生成商品内容
+func (s *AIService) GenerateProductContent(ctx context.Context, source, style string) (*AIProductResult, error) {
+	// 构建 prompt
+	prompt := fmt.Sprintf(`You are an Etsy product listing expert. Based on the following product information, generate an optimized Etsy listing.
+
+Source Material:
+%s
+
+Style Hint: %s
+
+Requirements:
+1. Title: Max 140 characters, include relevant keywords, be descriptive and appealing
+2. Description: Detailed, engaging, include materials, dimensions, care instructions if applicable
+3. Tags: Exactly 13 relevant search tags (single words or short phrases)
+4. Materials: List of materials used (max 13)
+5. Styles: 1-2 style descriptors
+
+Respond in JSON format only:
+{
+  "title": "...",
+  "description": "...",
+  "tags": ["tag1", "tag2", ...],
+  "materials": ["material1", ...],
+  "styles": ["style1", ...]
+}`, source, style)
+
+	// 调用 Gemini API
+	result, err := s.CallGemini(ctx, prompt)
+	if err != nil {
+		return nil, fmt.Errorf("Gemini 调用失败: %v", err)
+	}
+
+	// 解析响应
+	var aiResult AIProductResult
+	if err := json.Unmarshal([]byte(result), &aiResult); err != nil {
+		// 尝试从响应中提取 JSON
+		jsonStart := strings.Index(result, "{")
+		jsonEnd := strings.LastIndex(result, "}")
+		if jsonStart >= 0 && jsonEnd > jsonStart {
+			jsonStr := result[jsonStart : jsonEnd+1]
+			if err := json.Unmarshal([]byte(jsonStr), &aiResult); err != nil {
+				return nil, fmt.Errorf("解析 AI 响应失败: %v", err)
+			}
+		} else {
+			return nil, fmt.Errorf("AI 响应格式无效")
+		}
+	}
+
+	// 验证必填字段
+	if aiResult.Title == "" {
+		return nil, fmt.Errorf("AI 未生成标题")
+	}
+	if aiResult.Description == "" {
+		return nil, fmt.Errorf("AI 未生成描述")
+	}
+
+	// 限制 tags 数量
+	if len(aiResult.Tags) > 13 {
+		aiResult.Tags = aiResult.Tags[:13]
+	}
+	if len(aiResult.Materials) > 13 {
+		aiResult.Materials = aiResult.Materials[:13]
+	}
+	if len(aiResult.Styles) > 2 {
+		aiResult.Styles = aiResult.Styles[:2]
+	}
+
+	// 限制 title 长度
+	if len(aiResult.Title) > 140 {
+		aiResult.Title = aiResult.Title[:137] + "..."
+	}
+
+	return &aiResult, nil
+}
+
+// CallGemini 调用 Gemini API
+func (s *AIService) CallGemini(ctx context.Context, prompt string) (string, error) {
+	if s.Config.ApiKey == "" {
+		return "", fmt.Errorf("Gemini API Key 未配置")
+	}
+
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=%s", s.Config.ApiKey)
+
+	reqBody := map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{
+				"parts": []map[string]interface{}{
+					{"text": prompt},
+				},
+			},
+		},
+		"generationConfig": map[string]interface{}{
+			"temperature":     0.7,
+			"topK":            40,
+			"topP":            0.95,
+			"maxOutputTokens": 2048,
+		},
+	}
+
+	bodyBytes, _ := json.Marshal(reqBody)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return "", err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return "", fmt.Errorf("请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("Gemini API 错误 [%d]: %s", resp.StatusCode, string(respBody))
+	}
+
+	// 解析响应
+	var geminiResp struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+		} `json:"candidates"`
+	}
+
+	if err := json.Unmarshal(respBody, &geminiResp); err != nil {
+		return "", fmt.Errorf("解析响应失败: %v", err)
+	}
+
+	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
+		return "", fmt.Errorf("Gemini 返回空响应")
+	}
+
+	return geminiResp.Candidates[0].Content.Parts[0].Text, nil
+}
+
+// ==================== DTO 转换方法 ====================
+
+// ToProductResp Model -> DTO
+func (s *ProductService) ToProductResp(p *model.Product) dto.ProductResp {
+	resp := dto.ProductResp{
+		ID:        p.ID,
+		ListingID: p.ListingID,
+		ShopID:    p.ShopID,
+
+		Title:       p.Title,
+		Description: p.Description,
+		Tags:        p.Tags,
+		Materials:   p.Materials,
+		Styles:      p.Styles,
+		Url:         p.Url,
+
+		Price:        float64(p.PriceAmount) / float64(p.PriceDivisor),
+		CurrencyCode: p.CurrencyCode,
+		Quantity:     p.Quantity,
+
+		State:      string(p.State),
+		SyncStatus: p.SyncStatus,
+		SyncError:  p.SyncError,
+		EditStatus: int(p.EditStatus),
+
+		TaxonomyID:        p.TaxonomyID,
+		ShippingProfileID: p.ShippingProfileID,
+		ReturnPolicyID:    p.ReturnPolicyID,
+		ShopSectionID:     p.ShopSectionID,
+
+		WhoMade:  p.WhoMade,
+		WhenMade: p.WhenMade,
+		IsSupply: p.IsSupply,
+
+		ItemWeight:         p.ItemWeight,
+		ItemWeightUnit:     p.ItemWeightUnit,
+		ItemLength:         p.ItemLength,
+		ItemWidth:          p.ItemWidth,
+		ItemHeight:         p.ItemHeight,
+		ItemDimensionsUnit: p.ItemDimensionsUnit,
+
+		Views:       p.Views,
+		NumFavorers: p.NumFavorers,
+
+		CreatedAt: p.CreatedAt.Format("2006-01-02 15:04:05"),
+		UpdatedAt: p.UpdatedAt.Format("2006-01-02 15:04:05"),
+	}
+
+	// 转换图片
+	resp.Images = make([]dto.ProductImageResp, 0, len(p.Images))
+	for _, img := range p.Images {
+		resp.Images = append(resp.Images, s.toProductImageResp(&img))
+	}
+
+	// 转换变体
+	resp.Variants = make([]dto.ProductVariantResp, 0, len(p.Variants))
+	for _, v := range p.Variants {
+		resp.Variants = append(resp.Variants, s.toProductVariantResp(&v))
+	}
+
+	return resp
+}
+
+// toProductImageResp 图片 Model -> DTO
+func (s *ProductService) toProductImageResp(img *model.ProductImage) dto.ProductImageResp {
+	return dto.ProductImageResp{
+		ID:          img.ID,
+		EtsyImageID: img.EtsyImageID,
+		Url:         img.EtsyUrl,
+		LocalPath:   img.LocalPath,
+		Rank:        img.Rank,
+		AltText:     img.AltText,
+		Width:       img.Width,
+		Height:      img.Height,
+	}
+}
+
+// toProductVariantResp 变体 Model -> DTO
+func (s *ProductService) toProductVariantResp(v *model.ProductVariant) dto.ProductVariantResp {
+	props := make(map[string]interface{})
+	if v.PropertyValues != nil {
+		_ = json.Unmarshal(v.PropertyValues, &props)
+	}
+
+	return dto.ProductVariantResp{
+		ID:             v.ID,
+		EtsyProductID:  v.EtsyProductID,
+		EtsyOfferingID: v.EtsyOfferingID,
+		PropertyValues: props,
+		Price:          float64(v.PriceAmount) / float64(v.PriceDivisor),
+		Quantity:       v.Quantity,
+		LocalSKU:       v.LocalSKU,
+		EtsySKU:        v.EtsySKU,
+		IsEnabled:      v.IsEnabled,
+	}
+}
+
+// ToProductVO 兼容旧方法名
+func (s *ProductService) ToProductVO(p *model.Product) dto.ProductResp {
+	return s.ToProductResp(p)
+}

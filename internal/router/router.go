@@ -18,7 +18,8 @@ func InitRoutes(r *gin.Engine,
 	shopCtl *controller.ShopController,
 	shippingCtl *controller.ShippingProfileController,
 	returnPolicyCtl *controller.ReturnPolicyController,
-	productCtrl *controller.ProductController) {
+	productCtrl *controller.ProductController,
+) {
 	// 1. Swagger 文档路由
 	// 访问 http://localhost:8080/swagger/index.html 即可查看
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
@@ -101,7 +102,24 @@ func InitRoutes(r *gin.Engine,
 		//product 组
 		products := api.Group("/products")
 		{
-			products.GET("", productCtrl.GetProducts)
+			// 查询
+			products.GET("", productCtrl.GetProducts)           // GET /api/products?shop_id=1&page=1
+			products.GET("/stats", productCtrl.GetProductStats) // GET /api/products/stats?shop_id=1
+			products.GET("/:id", productCtrl.GetProduct)        // GET /api/products/123
+			// 创建 & 更新 & 删除
+			products.POST("", productCtrl.CreateProduct)       // POST /api/products
+			products.PATCH("/:id", productCtrl.UpdateProduct)  // PATCH /api/products/123
+			products.DELETE("/:id", productCtrl.DeleteProduct) // DELETE /api/products/123
+			// 状态变更
+			products.POST("/:id/activate", productCtrl.ActivateProduct)     // POST /api/products/123/activate
+			products.POST("/:id/deactivate", productCtrl.DeactivateProduct) // POST /api/products/123/deactivate
+			// AI 草稿
+			products.POST("/ai/generate", productCtrl.GenerateAIDraft) // POST /api/products/ai/generate
+			products.POST("/:id/approve", productCtrl.ApproveAIDraft)  // POST /api/products/123/approve
+			// 同步
+			products.POST("/sync", productCtrl.SyncProducts) // POST /api/products/sync?shop_id=1
+			// 图片
+			products.POST("/:id/images", productCtrl.UploadImage) // POST /api/products/123/images
 		}
 	}
 }

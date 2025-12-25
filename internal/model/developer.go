@@ -9,14 +9,12 @@ const (
 
 type DomainPool struct {
 	BaseModel
-	AuditMixin
 	Host       string      `gorm:"size:255;unique"`
 	IsActive   bool        `gorm:"default:true"`
 	Developers []Developer `gorm:"foreignkey:DomainPoolID"`
 }
 type Developer struct {
 	BaseModel
-	AuditMixin
 	// 1. 账号基础信息 (登录 Etsy 开发者后台用)
 	Name       string `gorm:"size:50"` // 备注名称，如 "开发者账号A"
 	LoginEmail string `gorm:"uniqueIndex;size:100;not null"`

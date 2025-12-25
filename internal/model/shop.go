@@ -20,7 +20,6 @@ const (
 
 type Shop struct {
 	BaseModel // 包含 ID(int64), CreatedAt, UpdatedAt
-	AuditMixin
 	// 1. 核心身份
 	// 改名为 EtsyShopID 以区分主键 ID，且与 Product 表外键保持一致
 	EtsyShopID   int64  `gorm:"uniqueIndex"` // 对应 Etsy 平台的 shop_id
@@ -132,7 +131,6 @@ type ShopSection struct {
 // GORM 自定义连接表 (Join Table)
 type ShopMember struct {
 	BaseModel
-	AuditMixin
 	// 联合唯一索引
 	// 确保一个用户在一个店铺里只有一条记录
 	SysUserID int64 `gorm:"index;uniqueIndex:idx_user_shop;not null"`

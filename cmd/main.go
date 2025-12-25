@@ -48,6 +48,7 @@ func main() {
 	shopSectionRepo := repository.NewShopSectionRepo(db)
 	returnPolicyRepo := repository.NewReturnPolicyRepo(db)
 	shopRepo := repository.NewShopRepo(db)
+	productRepo := repository.NewProductRepo(db)
 
 	// Service 层
 	// net
@@ -88,7 +89,7 @@ func main() {
 	)
 	authService := service.NewAuthService(shopService, dispatcher)
 
-	productService := service.NewProductService(shopRepo, aiService, storageService)
+	productService := service.NewProductService(productRepo, shopRepo, aiService, storageService, dispatcher)
 
 	// Controller 层
 	proxyController := controller.NewProxyController(proxyService)

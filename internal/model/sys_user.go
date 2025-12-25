@@ -3,7 +3,6 @@ package model
 // SysUser 系统用户/合作商账号
 type SysUser struct {
 	BaseModel
-	AuditMixin
 	// 基础信息
 	Username string `gorm:"size:100;uniqueIndex;not null"`
 	Password string `gorm:"size:255;not null"` // 哈希密码
@@ -28,16 +27,6 @@ type SysUser struct {
 	Memberships []ShopMember `gorm:"foreignKey:SysUserID"`
 }
 
-// AuditMixin 审计字段 (只记录，不参与 WHERE 查询权限)
-type AuditMixin struct {
-	BaseModel
-	CreatedBy int64 `gorm:"index"`     // 创建人的 SysUserID
-	UpdatedBy int64 `gorm:"index"`     // 最后修改人的 SysUserID
-	DeletedBy int64 `gorm:"default:0"` // 删除人的 SysUserID
-}
-
 func (SysUser) TableName() string {
 	return "sys_users"
 }
-
-func (AuditMixin) TableName() string { return "audit_mixins" }
