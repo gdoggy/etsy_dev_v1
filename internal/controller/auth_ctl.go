@@ -132,7 +132,7 @@ func (ctrl *AuthController) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	shop, err := ctrl.authService.ShopRepo.GetShopByID(c.Request.Context(), id)
+	shop, err := ctrl.authService.ShopService.GetByID(c.Request.Context(), id)
 	if err != nil {
 		log.Printf("shop id : %d, refresh token err:%v", id, err)
 		c.JSON(404, gin.H{"error": "查询店铺出错"})

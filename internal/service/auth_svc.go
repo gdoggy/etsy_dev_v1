@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"etsy_dev_v1_202512/internal/repository"
 	"etsy_dev_v1_202512/pkg/utils"
 )
 
@@ -28,15 +27,15 @@ const (
 )
 
 type AuthService struct {
-	ShopRepo   *repository.ShopRepo
-	dispatcher net.Dispatcher
+	ShopService *ShopService
+	dispatcher  net.Dispatcher
 }
 
 // NewAuthService 工厂方法
-func NewAuthService(shopRepo *repository.ShopRepo, dispatcher net.Dispatcher) *AuthService {
+func NewAuthService(shopService *ShopService, dispatcher net.Dispatcher) *AuthService {
 	return &AuthService{
-		ShopRepo:   shopRepo,
-		dispatcher: dispatcher,
+		ShopService: shopService,
+		dispatcher:  dispatcher,
 	}
 }
 
@@ -47,9 +46,15 @@ func (s *AuthService) GenerateLoginURL(ctx context.Context, shopID int64, region
 	var shop model.Shop
 	if shopID == 0 {
 		// 初次授权
-		// TODO.
+		if region == "" {
+			return "", fmt.Errorf("no shop region")
+		}
+		shop.Region = region
+		if err := s.ShopService.CreateShop(ctx, &shop); err != nil {
+			return "", err
+		}
 	} else {
-		existingShop, err := s.ShopRepo.GetShopByID(ctx, shopID)
+		existingShop, err := s.ShopService.shopRepo.GetByID(ctx, shopID)
 		if err != nil {
 			return "", err
 		}
@@ -111,7 +116,7 @@ func (s *AuthService) HandleCallback(ctx context.Context, code, state string) (*
 	}
 
 	// 3. 查出 Shop 配置
-	shop, err = s.ShopRepo.GetShopByID(ctx, shopID)
+	shop, err = s.ShopService.shopRepo.GetByID(ctx, shopID)
 	if err != nil {
 		log.Printf("get shop ID : %d err %v", shopID, err)
 		return shop, err
@@ -151,9 +156,9 @@ func (s *AuthService) HandleCallback(ctx context.Context, code, state string) (*
 	shop.AccessToken = etsyResp.AccessToken
 	shop.RefreshToken = etsyResp.RefreshToken
 	shop.TokenExpiresAt = time.Now().Add(time.Duration(etsyResp.ExpiresIn) * time.Second)
-	shop.TokenStatus = model.TokenStatusActive
+	shop.TokenStatus = model.TokenStatusExpired
 	// 入库保存
-	if err = s.ShopRepo.SaveOrUpdate(ctx, shop); err != nil {
+	if err = s.ShopService.shopRepo.SaveOrUpdate(ctx, shop); err != nil {
 		return shop, fmt.Errorf("店铺入库失败: %v", err)
 	}
 
@@ -192,7 +197,7 @@ func (s *AuthService) RefreshAccessToken(ctx context.Context, shop *model.Shop) 
 	// B. 业务层错误 (Etsy 明确拒绝)
 	if resp.StatusCode != 200 {
 		// 只有明确收到 400/401 才标记为失效
-		err = s.ShopRepo.UpdateTokenStatus(ctx, shop.ID, model.TokenStatusInvalid)
+		err = s.ShopService.shopRepo.UpdateTokenStatus(ctx, shop.ID, model.TokenStatusInvalid)
 		return fmt.Errorf("refresh denied by ETSY: %d, err: %v", resp.StatusCode, err)
 	}
 
@@ -207,5 +212,5 @@ func (s *AuthService) RefreshAccessToken(ctx context.Context, shop *model.Shop) 
 	shop.RefreshToken = tokenResp.RefreshToken
 	shop.TokenExpiresAt = time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
 
-	return s.ShopRepo.SaveOrUpdate(ctx, shop)
+	return s.ShopService.shopRepo.SaveOrUpdate(ctx, shop)
 }

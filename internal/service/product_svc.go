@@ -26,7 +26,7 @@ func (s *ProductService) GetShopProducts(shopID int64, page, pageSize int) ([]mo
 /*
 func (s *ProductService) SyncAndSaveListings(ctx context.Context, shopID int64) error {
 	// 1. 获取店铺鉴权信息
-	shop, err := s.ShopRepo.GetShopByID(ctx, shopID)
+	shop, err := s.ShopRepo.GetByID(ctx, shopID)
 	if err != nil {
 		return fmt.Errorf("店铺不存在: %v", err)
 	}

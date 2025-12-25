@@ -1,5 +1,12 @@
 package model
 
+// Developer 状态常量
+const (
+	DeveloperStatusPending = 0 // 未配置（用户未回填 CallbackURL 到 Etsy）
+	DeveloperStatusActive  = 1 // 正常启用
+	DeveloperStatusBanned  = 2 // 异常/封禁
+)
+
 type DomainPool struct {
 	BaseModel
 	AuditMixin

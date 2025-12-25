@@ -28,16 +28,16 @@ type SysUser struct {
 	Memberships []ShopMember `gorm:"foreignKey:SysUserID"`
 }
 
-func (SysUser) TableName() string {
-	return "sys_users"
-}
-
 // AuditMixin 审计字段 (只记录，不参与 WHERE 查询权限)
 type AuditMixin struct {
 	BaseModel
 	CreatedBy int64 `gorm:"index"`     // 创建人的 SysUserID
 	UpdatedBy int64 `gorm:"index"`     // 最后修改人的 SysUserID
 	DeletedBy int64 `gorm:"default:0"` // 删除人的 SysUserID
+}
+
+func (SysUser) TableName() string {
+	return "sys_users"
 }
 
 func (AuditMixin) TableName() string { return "audit_mixins" }

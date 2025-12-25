@@ -1,11 +1,11 @@
 package main
 
 import (
-	controller2 "etsy_dev_v1_202512/internal/controller"
-	model2 "etsy_dev_v1_202512/internal/model"
+	"etsy_dev_v1_202512/internal/controller"
+	"etsy_dev_v1_202512/internal/model"
 	"etsy_dev_v1_202512/internal/repository"
 	"etsy_dev_v1_202512/internal/router"
-	service2 "etsy_dev_v1_202512/internal/service"
+	"etsy_dev_v1_202512/internal/service"
 	"etsy_dev_v1_202512/internal/task"
 	"etsy_dev_v1_202512/pkg/database"
 	"etsy_dev_v1_202512/pkg/net"
@@ -18,16 +18,20 @@ func main() {
 	// 1. utils 层
 	db := database.InitDB(
 		// Manager
-		&model2.SysUser{}, &model2.ShopMember{},
+		&model.SysUser{}, &model.ShopMember{},
 		// Account
-		&model2.Proxy{}, &model2.Developer{},
+		&model.Proxy{}, &model.Developer{}, &model.DomainPool{},
 		// Shop
-		&model2.Shop{}, &model2.ShopAccount{},
+		&model.Shop{}, &model.ShopAccount{}, &model.ShopSection{},
+		// shipping
+		&model.ShippingProfile{}, &model.ShippingDestination{}, &model.ShippingUpgrade{},
+		// policy
+		&model.ReturnPolicy{},
 		// Product
-		&model2.Product{}, &model2.ProductImage{}, &model2.ProductVariant{},
+		&model.Product{}, &model.ProductImage{}, &model.ProductVariant{},
 	)
 
-	aiConfig := service2.AIConfig{
+	aiConfig := service.AIConfig{
 		ApiKey:     "",
 		TextModel:  "",
 		ImageModel: "",
@@ -38,31 +42,62 @@ func main() {
 	// Repo 层
 	proxyRepo := repository.NewProxyRepo(db)
 	developerRepo := repository.NewDeveloperRepo(db)
+	shippingProfileRepo := repository.NewShippingProfileRepo(db)
+	shippingUpgradeRepo := repository.NewShippingUpgradeRepo(db)
+	shippingDestRepo := repository.NewShippingDestinationRepo(db)
+	shopSectionRepo := repository.NewShopSectionRepo(db)
+	returnPolicyRepo := repository.NewReturnPolicyRepo(db)
 	shopRepo := repository.NewShopRepo(db)
 
 	// Service 层
 	// net
-	proxyService := service2.NewProxyService(proxyRepo, shopRepo)
-	networkProvider := service2.NewNetworkProvider(shopRepo, proxyService)
+	proxyService := service.NewProxyService(proxyRepo, shopRepo)
+	networkProvider := service.NewNetworkProvider(shopRepo, proxyService)
 
 	// 调度器
 	dispatcher := net.NewDispatcher(networkProvider)
 
 	// 消费者
-	aiService := service2.NewAIService(aiConfig)
-	storageService := service2.NewStorageService()
-	developerService := service2.NewDeveloperService(developerRepo)
-	authService := service2.NewAuthService(shopRepo, dispatcher)
-	shopService := service2.NewShopService(shopRepo, dispatcher)
+	aiService := service.NewAIService(aiConfig)
+	storageService := service.NewStorageService()
+	developerService := service.NewDeveloperService(developerRepo, shopRepo, dispatcher) // 修改此行
+	shippingService := service.NewShippingProfileService(
+		shippingProfileRepo,
+		shippingDestRepo,
+		shippingUpgradeRepo,
+		shopRepo,
+		developerRepo,
+		dispatcher,
+	)
+	returnPolicyService := service.NewReturnPolicyService(
+		returnPolicyRepo,
+		shopRepo,
+		developerRepo,
+		dispatcher,
+	)
 
-	productService := service2.NewProductService(shopRepo, aiService, storageService)
+	shopService := service.NewShopService(
+		shopRepo,
+		shopSectionRepo,
+		shippingProfileRepo,
+		shippingDestRepo,
+		shippingUpgradeRepo,
+		returnPolicyRepo,
+		developerRepo,
+		dispatcher,
+	)
+	authService := service.NewAuthService(shopService, dispatcher)
+
+	productService := service.NewProductService(shopRepo, aiService, storageService)
 
 	// Controller 层
-	proxyController := controller2.NewProxyController(proxyService)
-	developController := controller2.NewDeveloperController(developerService)
-	authController := controller2.NewAuthController(authService)
-	shopController := controller2.NewShopController(shopService)
-	productController := controller2.NewProductController(productService)
+	proxyController := controller.NewProxyController(proxyService)
+	developController := controller.NewDeveloperController(developerService)
+	authController := controller.NewAuthController(authService)
+	shippingController := controller.NewShippingProfileController(shippingService)
+	returnPolicyController := controller.NewReturnPolicyController(returnPolicyService)
+	shopController := controller.NewShopController(shopService)
+	productController := controller.NewProductController(productService)
 
 	// Task 层定时任务
 	proxyMonitorTask := task.NewProxyMonitor(proxyRepo, proxyService)
@@ -80,6 +115,8 @@ func main() {
 		developController,
 		authController,
 		shopController,
+		shippingController,
+		returnPolicyController,
 		productController,
 	)
 

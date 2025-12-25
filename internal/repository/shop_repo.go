@@ -8,6 +8,15 @@ import (
 	"gorm.io/gorm"
 )
 
+// ShopListFilter 店铺列表查询过滤条件
+type ShopListFilter struct {
+	ShopName    string
+	Status      int   // -1 表示不筛选
+	ProxyID     int64 // 0 表示不筛选
+	DeveloperID int64 // 0 表示不筛选
+	Page        int
+	PageSize    int
+}
 type ShopRepo struct {
 	db *gorm.DB
 }
@@ -21,14 +30,103 @@ func (r *ShopRepo) Create(ctx context.Context, shop *model.Shop) error {
 	return r.db.WithContext(ctx).Create(shop).Error
 }
 
-// GetShopByID 通过内部 ID 查找店铺
-func (r *ShopRepo) GetShopByID(ctx context.Context, shopID int64) (*model.Shop, error) {
+// GetByID 通过内部 ID 查找店铺
+func (r *ShopRepo) GetByID(ctx context.Context, shopID int64) (*model.Shop, error) {
 	var shop model.Shop
-	err := r.db.WithContext(ctx).Preload("Developer").Preload("Proxy").First(&shop, shopID).Error
+	err := r.db.WithContext(ctx).
+		Preload("Developer").
+		Preload("Proxy").
+		First(&shop, shopID).Error
 	if err != nil {
 		return nil, err
 	}
 	return &shop, nil
+}
+
+// GetByIDWithRelations 根据ID获取店铺（含全部关联数据）
+func (r *ShopRepo) GetByIDWithRelations(ctx context.Context, id int64) (*model.Shop, error) {
+	var shop model.Shop
+	err := r.db.WithContext(ctx).
+		Preload("Proxy").
+		Preload("Developer").
+		Preload("Sections", func(db *gorm.DB) *gorm.DB {
+			return db.Order("rank ASC, id ASC")
+		}).
+		Preload("ShippingProfiles").
+		Preload("ReturnPolicies").
+		First(&shop, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &shop, nil
+}
+
+// GetByEtsyShopID 根据Etsy店铺ID获取
+func (r *ShopRepo) GetByEtsyShopID(ctx context.Context, etsyShopID int64) (*model.Shop, error) {
+	var shop model.Shop
+	err := r.db.WithContext(ctx).
+		Where("etsy_shop_id = ?", etsyShopID).
+		First(&shop).Error
+	if err != nil {
+		return nil, err
+	}
+	return &shop, nil
+}
+
+// List 分页列表查询
+func (r *ShopRepo) List(ctx context.Context, filter ShopListFilter) ([]model.Shop, int64, error) {
+	var list []model.Shop
+	var total int64
+
+	db := r.db.WithContext(ctx).Model(&model.Shop{})
+
+	// 动态构建查询条件
+	if filter.ShopName != "" {
+		db = db.Where("shop_name LIKE ?", "%"+filter.ShopName+"%")
+	}
+	if filter.Status >= 0 {
+		db = db.Where("status = ?", filter.Status)
+	}
+	if filter.ProxyID > 0 {
+		db = db.Where("proxy_id = ?", filter.ProxyID)
+	}
+	if filter.DeveloperID > 0 {
+		db = db.Where("developer_id = ?", filter.DeveloperID)
+	}
+
+	// 计算总数
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// 分页查询
+	offset := (filter.Page - 1) * filter.PageSize
+	err := db.
+		Preload("Proxy", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id", "name", "ip", "port")
+		}).
+		Preload("Developer", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id", "name", "api_key")
+		}).
+		Order("id DESC").
+		Limit(filter.PageSize).
+		Offset(offset).
+		Find(&list).Error
+
+	return list, total, err
+}
+
+// Update 更新店铺
+func (r *ShopRepo) Update(ctx context.Context, shop *model.Shop) error {
+	return r.db.WithContext(ctx).Save(shop).Error
+}
+
+// UpdateFields 更新指定字段
+func (r *ShopRepo) UpdateFields(ctx context.Context, id int64, fields map[string]interface{}) error {
+	return r.db.WithContext(ctx).
+		Model(&model.Shop{}).
+		Where("id = ?", id).
+		Updates(fields).Error
 }
 
 // SaveOrUpdate 保存或更新店铺信息
@@ -50,25 +148,51 @@ func (r *ShopRepo) SaveOrUpdate(ctx context.Context, shop *model.Shop) error {
 	return r.db.Create(shop).Error
 }
 
-func (r *ShopRepo) UpdateTokenStatus(ctx context.Context, shopID int64, status string) error {
-	return r.db.WithContext(ctx).Model(&model.Shop{}).Where("id = ?", shopID).Update("token_status", status).Error
+// UpdateStatus 更新状态
+func (r *ShopRepo) UpdateStatus(ctx context.Context, id int64, status int) error {
+	return r.db.WithContext(ctx).
+		Model(&model.Shop{}).
+		Where("id = ?", id).
+		Update("status", status).Error
 }
 
-// GetShopByEtsyShopID 根据 Etsy 官方 ShopID 查找
-func (r *ShopRepo) GetShopByEtsyShopID(ctx context.Context, etsyShopID string) (*model.Shop, error) {
-	var shop model.Shop
-	err := r.db.WithContext(ctx).Where("etsy_shop_id = ?", etsyShopID).First(&shop).Error
-	if err != nil {
-		return nil, err
-	}
-	return &shop, nil
+// UpdateTokenStatus 更新Token状态
+func (r *ShopRepo) UpdateTokenStatus(ctx context.Context, id int64, tokenStatus string) error {
+	return r.db.WithContext(ctx).
+		Model(&model.Shop{}).
+		Where("id = ?", id).
+		Update("token_status", tokenStatus).Error
 }
 
-// GetShopsByProxyID 查代理受灾店铺
-func (r *ShopRepo) GetShopsByProxyID(ctx context.Context, proxyID int64) ([]model.Shop, error) {
-	var shops []model.Shop
-	err := r.db.WithContext(ctx).Where("proxy_id = ?", proxyID).Find(&shops).Error
-	return shops, err
+// Delete 软删除店铺
+func (r *ShopRepo) Delete(ctx context.Context, id int64) error {
+	return r.db.WithContext(ctx).Delete(&model.Shop{}, id).Error
+}
+
+// GetByDeveloperID 根据开发者ID获取所有店铺
+func (r *ShopRepo) GetByDeveloperID(ctx context.Context, developerID int64) ([]model.Shop, error) {
+	var list []model.Shop
+	err := r.db.WithContext(ctx).
+		Where("developer_id = ?", developerID).
+		Find(&list).Error
+	return list, err
+}
+
+// GetByProxyID 查代理受灾店铺
+func (r *ShopRepo) GetByProxyID(ctx context.Context, proxyID int64) ([]model.Shop, error) {
+	var list []model.Shop
+	err := r.db.WithContext(ctx).
+		Where("proxy_id = ?", proxyID).
+		Find(&list).Error
+	return list, err
+}
+
+// UpdateEtsySyncedAt 更新Etsy同步时间
+func (r *ShopRepo) UpdateEtsySyncedAt(ctx context.Context, id int64) error {
+	return r.db.WithContext(ctx).
+		Model(&model.Shop{}).
+		Where("id = ?", id).
+		Update("etsy_synced_at", gorm.Expr("NOW()")).Error
 }
 
 // UpdateProxyBinding 迁移绑定关系
@@ -94,19 +218,4 @@ func (r *ShopRepo) FindExpiringShops(ctx context.Context) ([]model.Shop, error) 
 		return nil, err
 	}
 	return shops, err
-}
-
-// BindDeveloper 新账户绑定开发者关系，业务侧必须输入 region，绑定相同国家的开发者账号
-func (r *ShopRepo) BindDeveloper(ctx context.Context, region string, developer *model.Developer) (*model.Shop, error) {
-	// 单个开发者最多绑定 2 个账号
-	// 先查询符合 region条件的账号，根据负载自动分配
-	var shop model.Shop
-	// TODO 使用事务管理
-	shop.Region = region
-	shop.Developer = developer
-	err := r.db.WithContext(ctx).Create(shop).Error
-	if err != nil {
-		return nil, err
-	}
-	return &shop, nil
 }

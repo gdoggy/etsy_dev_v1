@@ -231,7 +231,7 @@ func (s *ProxyService) VerifyAndHeal(ctx context.Context, proxy *model.Proxy) er
 // 作用：将指定坏代理下的所有店铺，自动迁移到同地区的可用代理上
 func (s *ProxyService) MigrateShops(ctx context.Context, deadProxy *model.Proxy) error {
 	// 1. 查找所有绑定在这个坏代理上的店铺
-	shops, err := s.ShopRepo.GetShopsByProxyID(ctx, deadProxy.ID)
+	shops, err := s.ShopRepo.GetByProxyID(ctx, deadProxy.ID)
 	if err != nil {
 		log.Printf("Failed to get affected shops: %v", err)
 		return err
