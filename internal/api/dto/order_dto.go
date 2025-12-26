@@ -174,14 +174,14 @@ type OrderStatsRequest struct {
 
 // OrderStatsResponse 订单统计响应
 type OrderStatsResponse struct {
-	TotalOrders      int     `json:"total_orders"`
+	TotalOrders      int64   `json:"total_orders"`
 	TotalAmount      float64 `json:"total_amount"`
 	Currency         string  `json:"currency"`
-	PendingOrders    int     `json:"pending_orders"`
-	ProcessingOrders int     `json:"processing_orders"`
-	ShippedOrders    int     `json:"shipped_orders"`
-	DeliveredOrders  int     `json:"delivered_orders"`
-	CanceledOrders   int     `json:"canceled_orders"`
+	PendingOrders    int64   `json:"pending_orders"`
+	ProcessingOrders int64   `json:"processing_orders"`
+	ShippedOrders    int64   `json:"shipped_orders"`
+	DeliveredOrders  int64   `json:"delivered_orders"`
+	CanceledOrders   int64   `json:"canceled_orders"`
 	AvgOrderValue    float64 `json:"avg_order_value"`
 }
 

@@ -1,13 +1,11 @@
 package dto
 
-import "time"
+// ==================== 通用结构 ====================
 
-// ==================== Karrio 通用结构 ====================
-
-// KarrioAddress 地址
-type KarrioAddress struct {
+// Address 地址（Karrio 通用）
+type Address struct {
 	PersonName   string `json:"person_name,omitempty"`
-	Company      string `json:"company_name,omitempty"`
+	CompanyName  string `json:"company_name,omitempty"`
 	AddressLine1 string `json:"address_line1"`
 	AddressLine2 string `json:"address_line2,omitempty"`
 	City         string `json:"city"`
@@ -16,192 +14,156 @@ type KarrioAddress struct {
 	CountryCode  string `json:"country_code"`
 	Phone        string `json:"phone_number,omitempty"`
 	Email        string `json:"email,omitempty"`
-	Residential  bool   `json:"residential,omitempty"`
 }
 
-// KarrioParcel 包裹
-type KarrioParcel struct {
+// Parcel 包裹
+type Parcel struct {
 	Weight        float64 `json:"weight"`
 	WeightUnit    string  `json:"weight_unit"` // KG, LB
 	Length        float64 `json:"length,omitempty"`
 	Width         float64 `json:"width,omitempty"`
 	Height        float64 `json:"height,omitempty"`
 	DimensionUnit string  `json:"dimension_unit,omitempty"` // CM, IN
-	PackagingType string  `json:"packaging_type,omitempty"`
-	Description   string  `json:"description,omitempty"`
-}
-
-// KarrioCustomsItem 海关申报项
-type KarrioCustomsItem struct {
-	Description   string  `json:"description"`
-	Quantity      int     `json:"quantity"`
-	Value         float64 `json:"value_amount"`
-	Currency      string  `json:"value_currency"`
-	Weight        float64 `json:"weight,omitempty"`
-	WeightUnit    string  `json:"weight_unit,omitempty"`
-	OriginCountry string  `json:"origin_country,omitempty"`
-	HSCode        string  `json:"hs_code,omitempty"`
-	SKU           string  `json:"sku,omitempty"`
-}
-
-// KarrioCustoms 海关信息
-type KarrioCustoms struct {
-	ContentType      string              `json:"content_type,omitempty"` // merchandise, documents, gift, sample
-	Incoterm         string              `json:"incoterm,omitempty"`     // DDU, DDP
-	Commodities      []KarrioCustomsItem `json:"commodities"`
-	DeclaredValue    float64             `json:"invoice,omitempty"`
-	DeclaredCurrency string              `json:"invoice_currency,omitempty"`
 }
 
 // ==================== Shipment 运单 ====================
 
-// CreateShipmentRequest 创建运单请求
+// CreateShipmentRequest 创建运单请求（Karrio API）
 type CreateShipmentRequest struct {
-	CarrierIDs  []string       `json:"carrier_ids"`
-	ServiceCode string         `json:"service,omitempty"`
-	Shipper     KarrioAddress  `json:"shipper"`
-	Recipient   KarrioAddress  `json:"recipient"`
-	Parcels     []KarrioParcel `json:"parcels"`
-	Customs     *KarrioCustoms `json:"customs,omitempty"`
-	Reference   string         `json:"reference,omitempty"`
-	LabelType   string         `json:"label_type,omitempty"` // PDF, ZPL
-	Metadata    map[string]any `json:"metadata,omitempty"`
+	CarrierName string            `json:"carrier_name"`
+	ServiceCode string            `json:"service_code"`
+	Shipper     *Address          `json:"shipper"`
+	Recipient   *Address          `json:"recipient"`
+	Parcels     []Parcel          `json:"parcels"`
+	Options     map[string]string `json:"options,omitempty"`
+	Reference   string            `json:"reference,omitempty"`
+	LabelType   string            `json:"label_type,omitempty"` // PDF, ZPL
 }
 
-// ShipmentResponse 运单响应
+// ShipmentResponse 运单响应（Karrio API）
 type ShipmentResponse struct {
-	ID             string          `json:"id"`
-	CarrierID      string          `json:"carrier_id"`
-	CarrierName    string          `json:"carrier_name"`
-	TrackingNumber string          `json:"tracking_number"`
-	ShipmentID     string          `json:"shipment_identifier"`
-	LabelURL       string          `json:"label_url,omitempty"`
-	LabelType      string          `json:"label_type,omitempty"`
-	Status         string          `json:"status"`
-	Service        string          `json:"service,omitempty"`
-	Metadata       map[string]any  `json:"metadata,omitempty"`
-	CreatedAt      time.Time       `json:"created_at"`
-	Messages       []KarrioMessage `json:"messages,omitempty"`
-}
-
-// KarrioMessage 消息/错误
-type KarrioMessage struct {
-	CarrierName string `json:"carrier_name,omitempty"`
-	CarrierID   string `json:"carrier_id,omitempty"`
-	Code        string `json:"code,omitempty"`
-	Message     string `json:"message"`
+	ID             string   `json:"id"`
+	Status         string   `json:"status"`
+	CarrierName    string   `json:"carrier_name"`
+	CarrierID      string   `json:"carrier_id"`
+	ServiceCode    string   `json:"service"`
+	TrackingNumber string   `json:"tracking_number"`
+	ShipmentID     string   `json:"shipment_identifier"`
+	LabelURL       string   `json:"label_url"`
+	LabelType      string   `json:"label_type"`
+	TrackingURL    string   `json:"tracking_url,omitempty"`
+	Documents      []string `json:"docs,omitempty"`
+	Meta           any      `json:"meta,omitempty"`
+	CreatedAt      string   `json:"created_at"`
 }
 
 // ==================== Tracker 跟踪 ====================
 
-// CreateTrackerRequest 创建跟踪器请求
+// CreateTrackerRequest 创建跟踪器请求（Karrio API）
 type CreateTrackerRequest struct {
-	TrackingNumber string         `json:"tracking_number"`
-	CarrierName    string         `json:"carrier_name"`
-	Metadata       map[string]any `json:"metadata,omitempty"`
+	TrackingNumber string            `json:"tracking_number"`
+	CarrierName    string            `json:"carrier_name"`
+	Reference      string            `json:"reference,omitempty"`
+	Metadata       map[string]string `json:"metadata,omitempty"`
 }
 
-// BatchCreateTrackersRequest 批量创建跟踪器
+// BatchCreateTrackersRequest 批量创建跟踪器请求
 type BatchCreateTrackersRequest struct {
 	Trackers []CreateTrackerRequest `json:"trackers"`
 }
 
-// TrackerResponse 跟踪器响应
+// TrackerResponse 跟踪器响应（Karrio API）
 type TrackerResponse struct {
 	ID                string          `json:"id"`
 	TrackingNumber    string          `json:"tracking_number"`
-	CarrierID         string          `json:"carrier_id"`
 	CarrierName       string          `json:"carrier_name"`
-	Status            string          `json:"status"` // pending, in_transit, out_for_delivery, delivered, ...
-	EstimatedDelivery *time.Time      `json:"estimated_delivery,omitempty"`
-	Events            []TrackingEvent `json:"events,omitempty"`
-	Metadata          map[string]any  `json:"metadata,omitempty"`
+	CarrierID         string          `json:"carrier_id"`
+	Status            string          `json:"status"`
+	Delivered         string          `json:"delivered"` // in_transit, delivered, etc.
+	EstimatedDelivery string          `json:"estimated_delivery,omitempty"`
+	Events            []TrackingEvent `json:"events"`
+	Meta              any             `json:"meta,omitempty"`
+	CreatedAt         string          `json:"created_at"`
+	UpdatedAt         string          `json:"updated_at"`
 }
 
-// TrackingEvent 跟踪事件
+// TrackingEvent 跟踪事件（Karrio API）
 type TrackingEvent struct {
-	Date        time.Time `json:"date"`
-	Description string    `json:"description"`
-	Location    string    `json:"location,omitempty"`
-	Code        string    `json:"code,omitempty"`
-	Time        string    `json:"time,omitempty"`
+	Date        string `json:"date"`
+	Time        string `json:"time"`
+	Description string `json:"description"`
+	Location    string `json:"location"`
+	Code        string `json:"code"`
 }
 
 // ==================== Rate 运费报价 ====================
 
-// RateRequest 运费查询请求
+// RateRequest 运费报价请求
 type RateRequest struct {
-	CarrierIDs []string       `json:"carrier_ids"`
-	Shipper    KarrioAddress  `json:"shipper"`
-	Recipient  KarrioAddress  `json:"recipient"`
-	Parcels    []KarrioParcel `json:"parcels"`
-	Services   []string       `json:"services,omitempty"`
+	Shipper   *Address `json:"shipper"`
+	Recipient *Address `json:"recipient"`
+	Parcels   []Parcel `json:"parcels"`
+	Services  []string `json:"services,omitempty"`
+	Carriers  []string `json:"carrier_ids,omitempty"`
 }
 
-// RateResponse 运费响应
+// RateResponse 运费报价响应
 type RateResponse struct {
 	Rates []Rate `json:"rates"`
 }
 
 // Rate 单个运费报价
 type Rate struct {
-	ID          string  `json:"id"`
-	CarrierID   string  `json:"carrier_id"`
-	CarrierName string  `json:"carrier_name"`
-	Service     string  `json:"service"`
-	TotalCharge float64 `json:"total_charge"`
-	Currency    string  `json:"currency"`
-	TransitDays int     `json:"transit_days,omitempty"`
+	ID           string  `json:"id"`
+	CarrierName  string  `json:"carrier_name"`
+	CarrierID    string  `json:"carrier_id"`
+	ServiceCode  string  `json:"service"`
+	ServiceName  string  `json:"service_name"`
+	TotalCharge  float64 `json:"total_charge"`
+	Currency     string  `json:"currency"`
+	TransitDays  int     `json:"transit_days,omitempty"`
+	ExtraCharges []struct {
+		Name   string  `json:"name"`
+		Amount float64 `json:"amount"`
+	} `json:"extra_charges,omitempty"`
 }
 
-// ==================== Webhook ====================
-
-// KarrioWebhookPayload Webhook 载荷
-type KarrioWebhookPayload struct {
-	Event     string         `json:"event"` // tracking.updated, shipment.purchased, ...
-	Data      map[string]any `json:"data"`
-	TestMode  bool           `json:"test_mode"`
-	CreatedAt time.Time      `json:"created_at"`
-}
-
-// TrackingWebhookData 跟踪 Webhook 数据
-type TrackingWebhookData struct {
-	TrackerID      string          `json:"id"`
-	TrackingNumber string          `json:"tracking_number"`
-	CarrierName    string          `json:"carrier_name"`
-	Status         string          `json:"status"`
-	Events         []TrackingEvent `json:"events"`
-}
-
-// ==================== Connection 连接配置 ====================
-
-// CarrierConnection 物流商连接
-type CarrierConnection struct {
-	ID          string         `json:"id"`
-	CarrierID   string         `json:"carrier_id"`
-	CarrierName string         `json:"carrier_name"`
-	TestMode    bool           `json:"test_mode"`
-	Active      bool           `json:"active"`
-	Credentials map[string]any `json:"credentials,omitempty"`
-}
+// ==================== Connection 连接管理 ====================
 
 // CreateConnectionRequest 创建连接请求
 type CreateConnectionRequest struct {
 	CarrierName string         `json:"carrier_name"`
 	CarrierID   string         `json:"carrier_id"`
 	Credentials map[string]any `json:"credentials"`
-	TestMode    bool           `json:"test_mode,omitempty"`
+	Config      map[string]any `json:"config,omitempty"`
+	Active      bool           `json:"active"`
+}
+
+// CarrierConnection 物流商连接
+type CarrierConnection struct {
+	ID          string         `json:"id"`
+	CarrierName string         `json:"carrier_name"`
+	CarrierID   string         `json:"carrier_id"`
+	Active      bool           `json:"active"`
+	Config      map[string]any `json:"config,omitempty"`
+	CreatedAt   string         `json:"created_at"`
 }
 
 // ==================== 通用响应 ====================
 
-// KarrioErrorResponse 错误响应
-type KarrioErrorResponse struct {
-	Errors []KarrioMessage `json:"errors"`
-}
-
 // KarrioListResponse 列表响应
 type KarrioListResponse[T any] struct {
-	Count   int `json:"count"`
-	Results []T `json:"results"`
+	Count    int    `json:"count"`
+	Next     string `json:"next,omitempty"`
+	Previous string `json:"previous,omitempty"`
+	Results  []T    `json:"results"`
+}
+
+// KarrioErrorResponse 错误响应
+type KarrioErrorResponse struct {
+	Errors []struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+		Details any    `json:"details,omitempty"`
+	} `json:"errors"`
 }

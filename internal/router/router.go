@@ -22,6 +22,9 @@ type Controllers struct {
 	ReturnPolicy *controller.ReturnPolicyController
 	Product      *controller.ProductController
 	Draft        *controller.DraftController
+	Order        *controller.OrderController    // 新增
+	Shipment     *controller.ShipmentController // 新增
+	Karrio       *controller.KarrioController   // 新增
 }
 
 // ==================== 主路由设置 ====================
@@ -52,6 +55,15 @@ func SetupRouter(ctrl *Controllers) *gin.Engine {
 		registerShippingRoutes(api, ctrl.Shipping, ctrl.ReturnPolicy)
 		registerProductRoutes(api, ctrl.Product)
 		registerDraftRoutes(api, ctrl.Draft)
+		registerOrderRoutes(api, ctrl.Order)       // 新增
+		registerShipmentRoutes(api, ctrl.Shipment) // 新增
+		registerKarrioRoutes(api, ctrl.Karrio)     // 新增
+	}
+
+	// Webhook 路由（独立于 API 组）
+	webhooks := r.Group("/api/webhooks")
+	{
+		registerWebhookRoutes(webhooks, ctrl.Shipment)
 	}
 
 	return r
@@ -214,6 +226,98 @@ func registerDraftRoutes(api *gin.RouterGroup, ctl *controller.DraftController) 
 			draftProducts.POST("/:product_id/confirm", ctl.ConfirmDraftProduct)
 		}
 	}
+}
+
+// registerOrderRoutes 订单模块路由
+func registerOrderRoutes(api *gin.RouterGroup, ctl *controller.OrderController) {
+	if ctl == nil {
+		return
+	}
+
+	orders := api.Group("/orders")
+	{
+		// 订单列表与详情
+		orders.GET("", ctl.List)
+		orders.GET("/:id", ctl.GetByID)
+
+		// 订单同步
+		orders.POST("/sync", ctl.SyncOrders)
+
+		// 订单状态更新
+		orders.PATCH("/:id/status", ctl.UpdateStatus)
+		orders.PATCH("/:id/note", ctl.UpdateNote)
+
+		// 订单统计
+		orders.GET("/stats", ctl.GetStats)
+
+		// 订单下的发货信息
+		orders.GET("/:order_id/shipment", ctl.GetShipment)
+	}
+}
+
+// registerShipmentRoutes 发货模块路由
+func registerShipmentRoutes(api *gin.RouterGroup, ctl *controller.ShipmentController) {
+	if ctl == nil {
+		return
+	}
+
+	shipments := api.Group("/shipments")
+	{
+		// 发货列表与创建
+		shipments.GET("", ctl.List)
+		shipments.POST("", ctl.Create)
+		shipments.POST("/with-label", ctl.CreateWithLabel)
+
+		// 物流商列表
+		shipments.GET("/carriers", ctl.GetCarriers)
+
+		// 发货详情与操作
+		shipments.GET("/:id", ctl.GetByID)
+		shipments.POST("/:id/refresh-tracking", ctl.RefreshTracking)
+		shipments.POST("/:id/sync-etsy", ctl.SyncToEtsy)
+	}
+}
+
+// registerKarrioRoutes Karrio 物流网关路由
+func registerKarrioRoutes(api *gin.RouterGroup, ctl *controller.KarrioController) {
+	if ctl == nil {
+		return
+	}
+
+	karrio := api.Group("/karrio")
+	{
+		// 健康检查
+		karrio.GET("/ping", ctl.Ping)
+
+		// 物流商连接管理
+		karrio.GET("/connections", ctl.ListConnections)
+		karrio.POST("/connections", ctl.CreateConnection)
+		karrio.DELETE("/connections/:id", ctl.DeleteConnection)
+
+		// 运费报价
+		karrio.POST("/rates", ctl.GetRates)
+
+		// 跟踪器管理
+		karrio.GET("/trackers", ctl.ListTrackers)
+		karrio.POST("/trackers", ctl.CreateTracker)
+		karrio.POST("/trackers/batch", ctl.BatchCreateTrackers)
+		karrio.GET("/trackers/:id", ctl.GetTracker)
+		karrio.POST("/trackers/:id/refresh", ctl.RefreshTracker)
+
+		// 运单管理
+		karrio.GET("/shipments/:id", ctl.GetShipment)
+		karrio.POST("/shipments/:id/cancel", ctl.CancelShipment)
+	}
+}
+
+// registerWebhookRoutes Webhook 路由
+func registerWebhookRoutes(webhooks *gin.RouterGroup, shipmentCtl *controller.ShipmentController) {
+	if shipmentCtl == nil {
+		return
+	}
+
+	// Karrio 物流跟踪 Webhook
+	webhooks.POST("/karrio/tracking", shipmentCtl.HandleWebhook)
 }
 
 // ==================== 中间件 ====================

@@ -2,10 +2,8 @@ package model
 
 import (
 	"errors"
-	"time"
 
 	"gorm.io/datatypes"
-	"gorm.io/gorm"
 )
 
 // ==================== 状态常量 ====================
@@ -47,10 +45,7 @@ const (
 
 // DraftTask 草稿任务
 type DraftTask struct {
-	ID             int64                       `gorm:"primaryKey;autoIncrement"`
-	CreatedAt      time.Time                   `gorm:"index"`
-	UpdatedAt      time.Time                   `gorm:"index"`
-	DeletedAt      gorm.DeletedAt              `gorm:"index"`
+	BaseModel
 	UserID         int64                       `gorm:"index;not null;comment:用户ID"`
 	SourceURL      string                      `gorm:"size:2048;not null;comment:源商品URL"`
 	SourcePlatform string                      `gorm:"size:32;index;comment:来源平台"`
@@ -72,10 +67,7 @@ func (*DraftTask) TableName() string {
 
 // DraftProduct 草稿商品
 type DraftProduct struct {
-	ID                int64                       `gorm:"primaryKey;autoIncrement"`
-	CreatedAt         time.Time                   `gorm:"index"`
-	UpdatedAt         time.Time                   `gorm:"index"`
-	DeletedAt         gorm.DeletedAt              `gorm:"index"`
+	BaseModel
 	TaskID            int64                       `gorm:"index;not null;comment:任务ID"`
 	ShopID            int64                       `gorm:"index;not null;comment:店铺ID"`
 	Title             string                      `gorm:"size:140;comment:商品标题"`
@@ -105,20 +97,17 @@ func (*DraftProduct) TableName() string {
 
 // DraftImage 草稿图片
 type DraftImage struct {
-	ID           int64          `gorm:"primaryKey;autoIncrement"`
-	CreatedAt    time.Time      `gorm:"index"`
-	UpdatedAt    time.Time      `gorm:"index"`
-	DeletedAt    gorm.DeletedAt `gorm:"index"`
-	TaskID       int64          `gorm:"index;not null;comment:任务ID"`
-	GroupIndex   int            `gorm:"index;comment:分组索引"`
-	ImageIndex   int            `gorm:"comment:组内索引"`
-	Prompt       string         `gorm:"type:text;comment:生成提示词"`
-	StorageURL   string         `gorm:"size:2048;comment:存储URL"`
-	ThumbnailURL string         `gorm:"size:2048;comment:缩略图URL"`
-	Width        int            `gorm:"comment:图片宽度"`
-	Height       int            `gorm:"comment:图片高度"`
-	Status       string         `gorm:"size:32;default:pending;comment:状态"`
-	ErrorMessage string         `gorm:"size:1024;comment:错误信息"`
+	BaseModel
+	TaskID       int64  `gorm:"index;not null;comment:任务ID"`
+	GroupIndex   int    `gorm:"index;comment:分组索引"`
+	ImageIndex   int    `gorm:"comment:组内索引"`
+	Prompt       string `gorm:"type:text;comment:生成提示词"`
+	StorageURL   string `gorm:"size:2048;comment:存储URL"`
+	ThumbnailURL string `gorm:"size:2048;comment:缩略图URL"`
+	Width        int    `gorm:"comment:图片宽度"`
+	Height       int    `gorm:"comment:图片高度"`
+	Status       string `gorm:"size:32;default:pending;comment:状态"`
+	ErrorMessage string `gorm:"size:1024;comment:错误信息"`
 
 	// 关联
 	Task *DraftTask `gorm:"foreignKey:TaskID"`

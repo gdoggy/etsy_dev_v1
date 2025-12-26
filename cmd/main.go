@@ -65,6 +65,10 @@ type Repositories struct {
 	DraftTask       repository.DraftTaskRepository
 	DraftProduct    repository.DraftProductRepository
 	DraftImage      repository.DraftImageRepository
+	Order           repository.OrderRepository
+	OrderItem       repository.OrderItemRepository
+	Shipment        repository.ShipmentRepository
+	TrackingEvent   repository.TrackingEventRepository
 	AiCallLog       repository.AICallLogRepository
 }
 
@@ -78,6 +82,9 @@ type Services struct {
 	ReturnPolicy *service.ReturnPolicyService
 	Product      *service.ProductService
 	Draft        *service.DraftService
+	Order        *service.OrderService
+	Shipment     *service.ShipmentService
+	Karrio       *service.KarrioClient
 	Storage      *service.StorageService
 	AI           *service.AIService
 	OneBound     *service.OneBoundService
@@ -102,6 +109,10 @@ func initDatabase() *gorm.DB {
 		&model.Product{}, &model.ProductImage{}, &model.ProductVariant{},
 		// Draft
 		&model.DraftTask{}, &model.DraftProduct{}, &model.DraftImage{},
+		// Order
+		&model.Order{}, &model.OrderItem{},
+		// Shipment
+		&model.Shipment{}, &model.TrackingEvent{},
 	)
 }
 
@@ -124,6 +135,8 @@ func initDependencies(db *gorm.DB) *Dependencies {
 		APIKey:    getEnv("ONEBOUND_API_KEY", ""),
 		APISecret: getEnv("ONEBOUND_API_SECRET", ""),
 	})
+	// -------- Karrio 客户端 --------
+	karrioClient := initKarrioClient()
 
 	// -------- 业务服务 --------
 	services := &Services{
@@ -131,6 +144,7 @@ func initDependencies(db *gorm.DB) *Dependencies {
 		Storage:  storageSvc,
 		AI:       aiSvc,
 		OneBound: oneBoundSvc,
+		Karrio:   karrioClient,
 	}
 
 	services.Developer = service.NewDeveloperService(repos.Developer, repos.Shop, dispatcher)
@@ -149,6 +163,13 @@ func initDependencies(db *gorm.DB) *Dependencies {
 	services.Auth = service.NewAuthService(services.Shop, dispatcher)
 	services.Product = service.NewProductService(repos.Product, repos.Shop, aiSvc, storageSvc, dispatcher)
 	services.Draft = service.NewDraftService(repos.DraftUow, repos.Shop, oneBoundSvc, aiSvc, storageSvc)
+	services.Order = service.NewOrderService(
+		repos.Order, repos.OrderItem, repos.Shipment, repos.Shop, dispatcher,
+	)
+	services.Shipment = service.NewShipmentService(
+		repos.Shipment, repos.TrackingEvent, repos.Order, repos.Shop,
+		karrioClient, nil, // EtsyShipmentSyncer 可后续实现
+	)
 
 	// -------- Controller 层 --------
 	controllers := initControllers(services)
@@ -178,6 +199,10 @@ func initRepositories(db *gorm.DB) *Repositories {
 		DraftTask:       repository.NewDraftTaskRepository(db),
 		DraftProduct:    repository.NewDraftProductRepository(db),
 		DraftImage:      repository.NewDraftImageRepository(db),
+		Order:           repository.NewOrderRepository(db),
+		OrderItem:       repository.NewOrderItemRepository(db),
+		Shipment:        repository.NewShipmentRepository(db),
+		TrackingEvent:   repository.NewTrackingEventRepository(db),
 		AiCallLog:       repository.NewAICallLogRepository(db),
 	}
 }
@@ -200,6 +225,23 @@ func initStorageService() *service.StorageService {
 	return storageSvc
 }
 
+// initKarrioClient 初始化 Karrio 客户端
+func initKarrioClient() *service.KarrioClient {
+	baseURL := getEnv("KARRIO_BASE_URL", "")
+	apiKey := getEnv("KARRIO_API_KEY", "")
+
+	if baseURL == "" {
+		log.Println("警告: KARRIO_BASE_URL 未配置，Karrio 客户端未初始化")
+		return nil
+	}
+
+	return service.NewKarrioClient(&service.KarrioConfig{
+		BaseURL: baseURL,
+		APIKey:  apiKey,
+		Timeout: 30 * time.Second,
+	})
+}
+
 // initControllers 初始化所有控制器
 func initControllers(svc *Services) *router.Controllers {
 	return &router.Controllers{
@@ -211,6 +253,9 @@ func initControllers(svc *Services) *router.Controllers {
 		ReturnPolicy: controller.NewReturnPolicyController(svc.ReturnPolicy),
 		Product:      controller.NewProductController(svc.Product),
 		Draft:        controller.NewDraftController(svc.Draft),
+		Order:        controller.NewOrderController(svc.Order),
+		Shipment:     controller.NewShipmentController(svc.Shipment),
+		Karrio:       controller.NewKarrioController(svc.Karrio),
 	}
 }
 
@@ -241,6 +286,22 @@ func initTasks(deps *Dependencies) {
 			deps.Services.Storage,
 		)
 		cleanupTask.Start()
+	}
+
+	// 订单同步任务
+	if deps.Services.Order != nil {
+		orderSyncTask := task.NewOrderSyncTask(
+			deps.Services.Order,
+			deps.Repos.Shop,
+		)
+		orderSyncTask.Start()
+	}
+
+	// 物流跟踪同步任务
+	if deps.Services.Shipment != nil {
+		// ShipmentService 实现了 ShipmentTracker interface
+		trackingSyncTask := task.NewTrackingSyncTask(deps.Repos.Shipment, deps.Services.Shipment)
+		trackingSyncTask.Start()
 	}
 
 	log.Println("定时任务已启动")

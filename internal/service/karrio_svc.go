@@ -20,12 +20,12 @@ type KarrioConfig struct {
 
 // KarrioClient Karrio API 客户端
 type KarrioClient struct {
-	config     KarrioConfig
+	config     *KarrioConfig
 	httpClient *http.Client
 }
 
 // NewKarrioClient 创建客户端
-func NewKarrioClient(cfg KarrioConfig) *KarrioClient {
+func NewKarrioClient(cfg *KarrioConfig) *KarrioClient {
 	if cfg.Timeout == 0 {
 		cfg.Timeout = 30 * time.Second
 	}

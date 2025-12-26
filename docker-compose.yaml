@@ -27,6 +27,10 @@ services:
       - ONEBOUND_API_KEY=${ONEBOUND_API_KEY:-}
       - ONEBOUND_API_SECRET=${ONEBOUND_API_SECRET:-}
 
+      # Karrio
+      - KARRIO_BASE_URL=http://localhost:5002
+      - KARRIO_API_KEY=api_key
+
       # Google Gemini AI
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
 

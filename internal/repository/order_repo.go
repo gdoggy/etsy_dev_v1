@@ -31,7 +31,7 @@ type OrderFilter struct {
 type OrderRepository interface {
 	Create(ctx context.Context, order *model.Order) error
 	GetByID(ctx context.Context, id int64) (*model.Order, error)
-	GetByEtsyReceiptID(ctx context.Context, receiptID int64) (*model.Order, error)
+	GetByEtsyReceiptID(ctx context.Context, shopID int64, receiptID int64) (*model.Order, error)
 	GetByIDWithRelations(ctx context.Context, id int64) (*model.Order, error)
 	List(ctx context.Context, filter OrderFilter) ([]model.Order, int64, error)
 	Update(ctx context.Context, order *model.Order) error
@@ -53,11 +53,13 @@ type OrderRepository interface {
 type OrderStats struct {
 	TotalOrders      int64
 	TotalAmount      int64
+	Currency         string
 	PendingOrders    int64
 	ProcessingOrders int64
 	ShippedOrders    int64
 	DeliveredOrders  int64
 	CanceledOrders   int64
+	AvgOrderValue    int64
 }
 
 // ==================== 实现 ====================
@@ -84,9 +86,9 @@ func (r *orderRepository) GetByID(ctx context.Context, id int64) (*model.Order, 
 	return &order, nil
 }
 
-func (r *orderRepository) GetByEtsyReceiptID(ctx context.Context, receiptID int64) (*model.Order, error) {
+func (r *orderRepository) GetByEtsyReceiptID(ctx context.Context, shopID int64, receiptID int64) (*model.Order, error) {
 	var order model.Order
-	err := r.db.WithContext(ctx).Where("etsy_receipt_id = ?", receiptID).First(&order).Error
+	err := r.db.WithContext(ctx).Where("shop_id = ? AND etsy_receipt_id = ?", shopID, receiptID).First(&order).Error
 	if err != nil {
 		return nil, err
 	}

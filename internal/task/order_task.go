@@ -2,30 +2,23 @@ package task
 
 import (
 	"context"
-	"etsy_dev_v1_202512/internal/api/dto"
 	"log"
 	"sync"
 	"time"
 
 	"github.com/robfig/cron/v3"
 
+	"etsy_dev_v1_202512/internal/api/dto"
+	"etsy_dev_v1_202512/internal/repository"
 	"etsy_dev_v1_202512/internal/service"
 )
-
-// ==================== 接口定义 ====================
-
-// ActiveShopProvider 活跃店铺提供者（扩展 ShopProvider）
-type ActiveShopProvider interface {
-	service.ShopProvider
-	ListActiveShops(ctx context.Context) ([]*service.ShopInfo, error)
-}
 
 // ==================== OrderSyncTask 订单同步任务 ====================
 
 // OrderSyncTask 订单同步定时任务
 type OrderSyncTask struct {
 	orderService *service.OrderService
-	shopProvider ActiveShopProvider
+	shopRepo     repository.ShopRepository
 	cron         *cron.Cron
 
 	// 并发控制
@@ -34,13 +27,13 @@ type OrderSyncTask struct {
 }
 
 // NewOrderSyncTask 创建订单同步任务
-func NewOrderSyncTask(orderService *service.OrderService, shopProvider ActiveShopProvider) *OrderSyncTask {
+func NewOrderSyncTask(orderService *service.OrderService, shopRepo repository.ShopRepository) *OrderSyncTask {
 	return &OrderSyncTask{
 		orderService:     orderService,
-		shopProvider:     shopProvider,
+		shopRepo:         shopRepo,
 		cron:             cron.New(cron.WithSeconds()),
 		concurrencyLimit: 10,                     // 订单同步并发上限
-		sleepTime:        100 * time.Millisecond, // 协程启动间隔
+		sleepTime:        200 * time.Millisecond, // 协程启动间隔
 	}
 }
 
@@ -87,7 +80,10 @@ func (t *OrderSyncTask) syncAllShops(ctx context.Context) {
 	log.Println("[OrderSyncTask] 开始同步订单...")
 
 	// 获取所有活跃店铺
-	shops, err := t.shopProvider.ListActiveShops(ctx)
+	shops, _, err := t.shopRepo.List(ctx, repository.ShopFilter{
+		Status:   1,
+		PageSize: 1000,
+	})
 	if err != nil {
 		log.Printf("[OrderSyncTask] 获取店铺列表失败: %v", err)
 		return
@@ -132,12 +128,12 @@ func (t *OrderSyncTask) syncAllShops(ctx context.Context) {
 		// 避免循环变量捕获
 		currentShop := shop
 
-		go func(s *service.ShopInfo) {
+		go func(shopID int64, shopName string) {
 			defer wg.Done()
 			defer func() { <-sem }()
 
 			resp, err := t.orderService.SyncOrders(ctx, &dto.SyncOrdersRequest{
-				ShopID:    s.ID,
+				ShopID:    shopID,
 				ForceSync: false,
 			})
 
@@ -145,7 +141,7 @@ func (t *OrderSyncTask) syncAllShops(ctx context.Context) {
 			defer mu.Unlock()
 
 			if err != nil {
-				log.Printf("[OrderSyncTask] 店铺 %s(%d) 同步失败: %v", s.ShopName, s.ID, err)
+				log.Printf("[OrderSyncTask] 店铺 %s(%d) 同步失败: %v", shopName, shopID, err)
 				totalErrors++
 				return
 			}
@@ -155,14 +151,14 @@ func (t *OrderSyncTask) syncAllShops(ctx context.Context) {
 
 			if resp.NewOrders > 0 || resp.UpdatedOrders > 0 {
 				log.Printf("[OrderSyncTask] 店铺 %s: 新增 %d, 更新 %d",
-					s.ShopName, resp.NewOrders, resp.UpdatedOrders)
+					shopName, resp.NewOrders, resp.UpdatedOrders)
 			}
 
 			// 记录同步警告
 			for _, e := range resp.Errors {
-				log.Printf("[OrderSyncTask] 店铺 %s 警告: %s", s.ShopName, e)
+				log.Printf("[OrderSyncTask] 店铺 %s 警告: %s", shopName, e)
 			}
-		}(currentShop)
+		}(currentShop.ID, currentShop.ShopName)
 	}
 
 	wg.Wait()
