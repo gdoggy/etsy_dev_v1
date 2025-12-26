@@ -50,7 +50,7 @@ type StorageConfig struct {
 
 // ==================== 工厂方法 ====================
 
-func NewStorageProvider(cfg StorageConfig) (StorageProvider, error) {
+func NewStorageProvider(cfg *StorageConfig) (StorageProvider, error) {
 	switch cfg.Provider {
 	case "s3":
 		return NewS3Storage(cfg)
@@ -68,11 +68,11 @@ func NewStorageProvider(cfg StorageConfig) (StorageProvider, error) {
 // StorageService 存储服务（兼容旧代码，包装 StorageProvider）
 type StorageService struct {
 	provider StorageProvider
-	config   StorageConfig
+	config   *StorageConfig
 }
 
 // NewStorageService 创建存储服务
-func NewStorageService(cfg StorageConfig) (*StorageService, error) {
+func NewStorageService(cfg *StorageConfig) (*StorageService, error) {
 	provider, err := NewStorageProvider(cfg)
 	if err != nil {
 		return nil, err
@@ -123,7 +123,7 @@ type S3Storage struct {
 	basePath  string
 }
 
-func NewS3Storage(cfg StorageConfig) (*S3Storage, error) {
+func NewS3Storage(cfg *StorageConfig) (*S3Storage, error) {
 	awsCfg, err := config.LoadDefaultConfig(context.Background(),
 		config.WithRegion(cfg.Region),
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
@@ -246,7 +246,7 @@ type COSStorage struct {
 	basePath  string
 }
 
-func NewCOSStorage(cfg StorageConfig) (*COSStorage, error) {
+func NewCOSStorage(cfg *StorageConfig) (*COSStorage, error) {
 	// COS兼容S3协议
 	endpoint := cfg.Endpoint
 	if endpoint == "" {
@@ -374,7 +374,7 @@ type LocalStorage struct {
 	baseURL  string
 }
 
-func NewLocalStorage(cfg StorageConfig) (*LocalStorage, error) {
+func NewLocalStorage(cfg *StorageConfig) (*LocalStorage, error) {
 	basePath := cfg.BasePath
 	if basePath == "" {
 		basePath = "./uploads"

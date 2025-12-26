@@ -14,7 +14,7 @@ import (
 
 // ProxyMonitor 代理巡检任务
 type ProxyMonitor struct {
-	proxyRepo    *repository.ProxyRepo
+	proxyRepo    repository.ProxyRepository
 	proxyService *service.ProxyService
 	Cron         *cron.Cron
 
@@ -23,7 +23,7 @@ type ProxyMonitor struct {
 	sleepTime        time.Duration
 }
 
-func NewProxyMonitor(proxyRepo *repository.ProxyRepo, proxyService *service.ProxyService) *ProxyMonitor {
+func NewProxyMonitor(proxyRepo repository.ProxyRepository, proxyService *service.ProxyService) *ProxyMonitor {
 	return &ProxyMonitor{
 		proxyRepo:        proxyRepo,
 		proxyService:     proxyService,

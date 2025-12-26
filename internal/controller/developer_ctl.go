@@ -71,7 +71,7 @@ func (d *DeveloperController) GetList(c *gin.Context) {
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	status, _ := strconv.Atoi(c.DefaultQuery("status", "-1"))
 
-	filter := repository.DeveloperListFilter{
+	filter := repository.DeveloperFilter{
 		Page:     page,
 		PageSize: pageSize,
 		Name:     c.Query("name"),

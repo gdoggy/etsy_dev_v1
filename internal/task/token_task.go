@@ -14,7 +14,7 @@ import (
 )
 
 type TokenTask struct {
-	ShopRepo    *repository.ShopRepo
+	ShopRepo    repository.ShopRepository
 	AuthService *service.AuthService
 	Cron        *cron.Cron
 
@@ -23,7 +23,7 @@ type TokenTask struct {
 	sleepTime        time.Duration
 }
 
-func NewTokenTask(shopRepo *repository.ShopRepo, authService *service.AuthService) *TokenTask {
+func NewTokenTask(shopRepo repository.ShopRepository, authService *service.AuthService) *TokenTask {
 	return &TokenTask{
 		ShopRepo:         shopRepo,
 		AuthService:      authService,
