@@ -19,8 +19,11 @@ type DraftTaskRepository interface {
 	UpdateFields(ctx context.Context, id int64, fields map[string]interface{}) error
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context, filter TaskFilter) ([]model.DraftTask, int64, error)
-	GetExpired(ctx context.Context, before time.Time) ([]model.DraftTask, error)
 	UpdateStatus(ctx context.Context, id int64, status, aiStatus string) error
+
+	// 过期清理相关
+	FindExpired(ctx context.Context, before time.Time) ([]*model.DraftTask, error)
+	MarkExpired(ctx context.Context, id int64) error
 }
 
 // DraftProductRepository 草稿商品仓储接口
@@ -32,9 +35,16 @@ type DraftProductRepository interface {
 	UpdateFields(ctx context.Context, id int64, fields map[string]interface{}) error
 	Delete(ctx context.Context, id int64) error
 	GetByTaskID(ctx context.Context, taskID int64) ([]model.DraftProduct, error)
-	GetPendingSync(ctx context.Context, limit int) ([]model.DraftProduct, error)
 	ConfirmAll(ctx context.Context, taskID int64) (int64, error)
 	CountByTaskID(ctx context.Context, taskID int64) (int64, error)
+
+	// 提交任务相关
+	FindPendingSubmit(ctx context.Context, limit int) ([]*model.DraftProduct, error)
+	UpdateSyncStatus(ctx context.Context, id int64, status int) error
+	MarkSubmitted(ctx context.Context, id int64, listingID int64) error
+	MarkFailed(ctx context.Context, id int64, errMsg string) error
+	UpdateProductID(ctx context.Context, id int64, productID int64) error
+	DeleteByTaskID(ctx context.Context, taskID int64) error
 }
 
 // DraftImageRepository 草稿图片仓储接口
@@ -61,9 +71,8 @@ type TaskFilter struct {
 	PageSize int
 }
 
-// ==================== 仓储实现 ====================
+// ==================== DraftTask 仓储实现 ====================
 
-// draftTaskRepo 草稿任务仓储实现
 type draftTaskRepo struct {
 	db *gorm.DB
 }
@@ -132,14 +141,6 @@ func (r *draftTaskRepo) List(ctx context.Context, filter TaskFilter) ([]model.Dr
 	return tasks, total, nil
 }
 
-func (r *draftTaskRepo) GetExpired(ctx context.Context, before time.Time) ([]model.DraftTask, error) {
-	var tasks []model.DraftTask
-	err := r.db.WithContext(ctx).
-		Where("created_at < ? AND status = ?", before, model.TaskStatusDraft).
-		Find(&tasks).Error
-	return tasks, err
-}
-
 func (r *draftTaskRepo) UpdateStatus(ctx context.Context, id int64, status, aiStatus string) error {
 	updates := make(map[string]interface{})
 	if status != "" {
@@ -151,7 +152,24 @@ func (r *draftTaskRepo) UpdateStatus(ctx context.Context, id int64, status, aiSt
 	return r.db.WithContext(ctx).Model(&model.DraftTask{}).Where("id = ?", id).Updates(updates).Error
 }
 
-// ==================== 草稿商品仓储实现 ====================
+// FindExpired 查找过期的草稿任务
+func (r *draftTaskRepo) FindExpired(ctx context.Context, before time.Time) ([]*model.DraftTask, error) {
+	var tasks []*model.DraftTask
+	err := r.db.WithContext(ctx).
+		Where("created_at < ? AND status = ?", before, model.TaskStatusDraft).
+		Find(&tasks).Error
+	return tasks, err
+}
+
+// MarkExpired 标记任务为过期
+func (r *draftTaskRepo) MarkExpired(ctx context.Context, id int64) error {
+	return r.db.WithContext(ctx).
+		Model(&model.DraftTask{}).
+		Where("id = ?", id).
+		Update("status", model.TaskStatusExpired).Error
+}
+
+// ==================== DraftProduct 仓储实现 ====================
 
 type draftProductRepo struct {
 	db *gorm.DB
@@ -199,15 +217,6 @@ func (r *draftProductRepo) GetByTaskID(ctx context.Context, taskID int64) ([]mod
 	return products, err
 }
 
-func (r *draftProductRepo) GetPendingSync(ctx context.Context, limit int) ([]model.DraftProduct, error) {
-	var products []model.DraftProduct
-	err := r.db.WithContext(ctx).
-		Where("status = ? AND sync_status = ?", model.DraftStatusConfirmed, model.DraftSyncStatusPending).
-		Limit(limit).
-		Find(&products).Error
-	return products, err
-}
-
 func (r *draftProductRepo) ConfirmAll(ctx context.Context, taskID int64) (int64, error) {
 	result := r.db.WithContext(ctx).
 		Model(&model.DraftProduct{}).
@@ -225,7 +234,64 @@ func (r *draftProductRepo) CountByTaskID(ctx context.Context, taskID int64) (int
 	return count, err
 }
 
-// ==================== 草稿图片仓储实现 ====================
+// FindPendingSubmit 查找待提交的草稿商品
+func (r *draftProductRepo) FindPendingSubmit(ctx context.Context, limit int) ([]*model.DraftProduct, error) {
+	var products []*model.DraftProduct
+	err := r.db.WithContext(ctx).
+		Where("status = ? AND sync_status = ?", model.DraftStatusConfirmed, model.DraftSyncStatusPending).
+		Limit(limit).
+		Find(&products).Error
+	return products, err
+}
+
+// UpdateSyncStatus 更新同步状态
+func (r *draftProductRepo) UpdateSyncStatus(ctx context.Context, id int64, status int) error {
+	return r.db.WithContext(ctx).
+		Model(&model.DraftProduct{}).
+		Where("id = ?", id).
+		Update("sync_status", status).Error
+}
+
+// MarkSubmitted 标记为已提交
+func (r *draftProductRepo) MarkSubmitted(ctx context.Context, id int64, listingID int64) error {
+	return r.db.WithContext(ctx).
+		Model(&model.DraftProduct{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"status":      model.DraftStatusSubmitted,
+			"sync_status": model.DraftSyncStatusDone,
+			"listing_id":  listingID,
+			"sync_error":  "",
+		}).Error
+}
+
+// MarkFailed 标记为失败
+func (r *draftProductRepo) MarkFailed(ctx context.Context, id int64, errMsg string) error {
+	return r.db.WithContext(ctx).
+		Model(&model.DraftProduct{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"sync_status": model.DraftSyncStatusFailed,
+			"sync_error":  errMsg,
+		}).Error
+}
+
+// UpdateProductID 更新关联的 Product ID
+func (r *draftProductRepo) UpdateProductID(ctx context.Context, id int64, productID int64) error {
+	return r.db.WithContext(ctx).
+		Model(&model.DraftProduct{}).
+		Where("id = ?", id).
+		Update("product_id", productID).Error
+}
+
+// DeleteByTaskID 按任务ID删除
+func (r *draftProductRepo) DeleteByTaskID(ctx context.Context, taskID int64) error {
+	return r.db.WithContext(ctx).
+		Where("task_id = ?", taskID).
+		Delete(&model.DraftProduct{}).Error
+}
+
+// ==================== DraftImage 仓储实现 ====================
 
 type draftImageRepo struct {
 	db *gorm.DB

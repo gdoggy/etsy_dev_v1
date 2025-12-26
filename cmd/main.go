@@ -44,9 +44,28 @@ func main() {
 // Dependencies 依赖容器
 type Dependencies struct {
 	DB          *gorm.DB
+	Repos       *Repositories
 	Dispatcher  net.Dispatcher
 	Controllers *router.Controllers
 	Services    *Services
+}
+
+// Repositories 仓库集合
+type Repositories struct {
+	Proxy           repository.ProxyRepository
+	Developer       repository.DeveloperRepository
+	Shop            repository.ShopRepository
+	ShopSection     repository.ShopSectionRepository
+	ShippingProfile repository.ShippingProfileRepository
+	ShippingDest    repository.ShippingDestinationRepository
+	ShippingUpgrade repository.ShippingUpgradeRepository
+	ReturnPolicy    repository.ReturnPolicyRepository
+	Product         repository.ProductRepository
+	DraftUow        *repository.DraftUnitOfWork
+	DraftTask       repository.DraftTaskRepository
+	DraftProduct    repository.DraftProductRepository
+	DraftImage      repository.DraftImageRepository
+	AiCallLog       repository.AICallLogRepository
 }
 
 // Services 服务集合
@@ -100,7 +119,7 @@ func initDependencies(db *gorm.DB) *Dependencies {
 	storageSvc := initStorageService()
 	aiSvc := service.NewAIService(&service.AIConfig{
 		ApiKey: getEnv("GEMINI_API_KEY", ""),
-	}, storageSvc, repos.aiCallLog)
+	}, storageSvc, repos.AiCallLog)
 	oneBoundSvc := service.NewOneBoundService(&service.OneBoundConfig{
 		APIKey:    getEnv("ONEBOUND_API_KEY", ""),
 		APISecret: getEnv("ONEBOUND_API_SECRET", ""),
@@ -129,54 +148,43 @@ func initDependencies(db *gorm.DB) *Dependencies {
 	)
 	services.Auth = service.NewAuthService(services.Shop, dispatcher)
 	services.Product = service.NewProductService(repos.Product, repos.Shop, aiSvc, storageSvc, dispatcher)
-	services.Draft = service.NewDraftService(repos.draftUow, oneBoundSvc, aiSvc, storageSvc)
+	services.Draft = service.NewDraftService(repos.DraftUow, repos.Shop, oneBoundSvc, aiSvc, storageSvc)
 
 	// -------- Controller 层 --------
 	controllers := initControllers(services)
 
 	return &Dependencies{
 		DB:          db,
+		Repos:       repos,
 		Dispatcher:  dispatcher,
 		Controllers: controllers,
 		Services:    services,
 	}
 }
 
-// Repositories 仓库集合
-type Repositories struct {
-	Proxy           *repository.ProxyRepo
-	Developer       *repository.DeveloperRepo
-	Shop            *repository.ShopRepo
-	ShopSection     *repository.ShopSectionRepo
-	ShippingProfile *repository.ShippingProfileRepo
-	ShippingDest    *repository.ShippingDestinationRepo
-	ShippingUpgrade *repository.ShippingUpgradeRepo
-	ReturnPolicy    *repository.ReturnPolicyRepo
-	Product         *repository.ProductRepo
-	draftUow        *repository.DraftUnitOfWork
-	aiCallLog       repository.AICallLogRepository
-}
-
 // initRepositories 初始化所有仓库
 func initRepositories(db *gorm.DB) *Repositories {
 	return &Repositories{
-		Proxy:           repository.NewProxyRepo(db),
-		Developer:       repository.NewDeveloperRepo(db),
-		Shop:            repository.NewShopRepo(db),
-		ShopSection:     repository.NewShopSectionRepo(db),
-		ShippingProfile: repository.NewShippingProfileRepo(db),
-		ShippingDest:    repository.NewShippingDestinationRepo(db),
-		ShippingUpgrade: repository.NewShippingUpgradeRepo(db),
-		ReturnPolicy:    repository.NewReturnPolicyRepo(db),
-		Product:         repository.NewProductRepo(db),
-		draftUow:        repository.NewDraftUnitOfWork(db),
-		aiCallLog:       repository.NewAICallLogRepository(db),
+		Proxy:           repository.NewProxyRepository(db),
+		Developer:       repository.NewDeveloperRepository(db),
+		Shop:            repository.NewShopRepository(db),
+		ShopSection:     repository.NewShopSectionRepository(db),
+		ShippingProfile: repository.NewShippingProfileRepository(db),
+		ShippingDest:    repository.NewShippingDestinationRepository(db),
+		ShippingUpgrade: repository.NewShippingUpgradeRepository(db),
+		ReturnPolicy:    repository.NewReturnPolicyRepository(db),
+		Product:         repository.NewProductRepository(db),
+		DraftUow:        repository.NewDraftUnitOfWork(db),
+		DraftTask:       repository.NewDraftTaskRepository(db),
+		DraftProduct:    repository.NewDraftProductRepository(db),
+		DraftImage:      repository.NewDraftImageRepository(db),
+		AiCallLog:       repository.NewAICallLogRepository(db),
 	}
 }
 
 // initStorageService 初始化存储服务
 func initStorageService() *service.StorageService {
-	storageSvc, err := service.NewStorageService(service.StorageConfig{
+	storageSvc, err := service.NewStorageService(&service.StorageConfig{
 		Provider:  getEnv("STORAGE_PROVIDER", "s3"),
 		Bucket:    getEnv("AWS_BUCKET", ""),
 		Region:    getEnv("AWS_REGION", ""),
@@ -212,21 +220,26 @@ func initControllers(svc *Services) *router.Controllers {
 func initTasks(deps *Dependencies) {
 	// 代理监控
 	proxyMonitor := task.NewProxyMonitor(
-		repository.NewProxyRepo(deps.DB),
+		deps.Services.Proxy.ProxyRepo,
 		deps.Services.Proxy,
 	)
 	proxyMonitor.Start()
 
 	// Token 刷新
 	tokenTask := task.NewTokenTask(
-		repository.NewShopRepo(deps.DB),
+		deps.Repos.Shop,
 		deps.Services.Auth,
 	)
 	tokenTask.Start()
 
 	// 草稿清理
 	if deps.Services.Storage != nil {
-		cleanupTask := task.NewDraftCleanupTask(deps.DB, deps.Services.Storage.GetProvider())
+		cleanupTask := task.NewDraftCleanupTask(
+			deps.Repos.DraftTask,
+			deps.Repos.DraftProduct,
+			deps.Repos.DraftImage,
+			deps.Services.Storage,
+		)
 		cleanupTask.Start()
 	}
 
@@ -260,7 +273,7 @@ func startServer(r *gin.Engine) {
 	log.Println("正在关闭服务...")
 
 	// 优雅关闭，最多等待 10 秒
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {

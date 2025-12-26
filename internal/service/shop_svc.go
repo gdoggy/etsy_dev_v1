@@ -24,24 +24,24 @@ const (
 )
 
 type ShopService struct {
-	shopRepo        *repository.ShopRepo
-	sectionRepo     *repository.ShopSectionRepo
-	profileRepo     *repository.ShippingProfileRepo
-	destinationRepo *repository.ShippingDestinationRepo
-	upgradeRepo     *repository.ShippingUpgradeRepo
-	policyRepo      *repository.ReturnPolicyRepo
-	developerRepo   *repository.DeveloperRepo
+	shopRepo        repository.ShopRepository
+	sectionRepo     repository.ShopSectionRepository
+	profileRepo     repository.ShippingProfileRepository
+	destinationRepo repository.ShippingDestinationRepository
+	upgradeRepo     repository.ShippingUpgradeRepository
+	policyRepo      repository.ReturnPolicyRepository
+	developerRepo   repository.DeveloperRepository
 	dispatcher      net.Dispatcher
 }
 
 func NewShopService(
-	shopRepo *repository.ShopRepo,
-	sectionRepo *repository.ShopSectionRepo,
-	profileRepo *repository.ShippingProfileRepo,
-	destinationRepo *repository.ShippingDestinationRepo,
-	upgradeRepo *repository.ShippingUpgradeRepo,
-	policyRepo *repository.ReturnPolicyRepo,
-	developerRepo *repository.DeveloperRepo,
+	shopRepo repository.ShopRepository,
+	sectionRepo repository.ShopSectionRepository,
+	profileRepo repository.ShippingProfileRepository,
+	destinationRepo repository.ShippingDestinationRepository,
+	upgradeRepo repository.ShippingUpgradeRepository,
+	policyRepo repository.ReturnPolicyRepository,
+	developerRepo repository.DeveloperRepository,
 	dispatcher net.Dispatcher,
 ) *ShopService {
 	return &ShopService{
@@ -65,7 +65,7 @@ func (s *ShopService) GetByID(ctx context.Context, id int64) (*model.Shop, error
 
 // GetShopList 获取店铺列表
 func (s *ShopService) GetShopList(ctx context.Context, req dto.ShopListReq) (*dto.ShopListResp, error) {
-	filter := repository.ShopListFilter{
+	filter := repository.ShopFilter{
 		ShopName:    req.ShopName,
 		Status:      req.Status,
 		ProxyID:     req.ProxyID,
@@ -136,11 +136,12 @@ func (s *ShopService) CreateShop(ctx context.Context, shop *model.Shop) error {
 	}
 
 	shop.Status = model.ShopStatusActive
-	shop.TokenStatus = model.TokenStatusValid
-
+	shop.TokenStatus = model.ShopTokenStatusValid
 	// 绑定 developer
-	shop.Developer, err = s.developerRepo.FindBestDevByRegion(ctx, shop.Region)
-
+	shop.Developer, err = s.developerRepo.FindBestByRegion(ctx, shop.Region)
+	if err != nil {
+		return err
+	}
 	return s.shopRepo.Create(ctx, shop)
 }
 
@@ -157,7 +158,7 @@ func (s *ShopService) UpdateTokenInfo(ctx context.Context, shopID int64, accessT
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
 		"token_expiry":  tokenExpiry,
-		"token_status":  model.TokenStatusValid,
+		"token_status":  model.ShopTokenStatusValid,
 		"status":        model.ShopStatusActive,
 	}
 	return s.shopRepo.UpdateFields(ctx, shopID, fields)
@@ -170,7 +171,7 @@ func (s *ShopService) UpdateTokenStatus(ctx context.Context, shopID int64, token
 		"token_status": tokenStatus,
 	}
 
-	if tokenStatus == model.TokenStatusInvalid || tokenStatus == model.TokenStatusExpired {
+	if tokenStatus == model.ShopTokenStatusInvalid || tokenStatus == model.ShopTokenStatusExpired {
 		fields["status"] = model.ShopStatusPending
 	}
 
@@ -184,7 +185,7 @@ func (s *ShopService) UpdateStatusBySystem(ctx context.Context, shopID int64, st
 	if status != model.ShopStatusPending && status != model.ShopStatusActive {
 		return errors.New("系统仅允许设置状态为待授权或正常")
 	}
-	return s.shopRepo.UpdateStatus(ctx, shopID, status)
+	return s.shopRepo.UpdateFields(ctx, shopID, map[string]interface{}{"status": status})
 }
 
 // ==================== 用户操作 ====================
@@ -203,7 +204,7 @@ func (s *ShopService) StopShop(ctx context.Context, shopID int64) error {
 		return errors.New("店铺已处于停用状态")
 	}
 
-	return s.shopRepo.UpdateStatus(ctx, shopID, model.ShopStatusInactive)
+	return s.shopRepo.UpdateFields(ctx, shopID, map[string]interface{}{"status": model.ShopStatusInactive})
 }
 
 // ResumeShop 用户恢复店铺（触发重新授权）
@@ -222,7 +223,7 @@ func (s *ShopService) ResumeShop(ctx context.Context, shopID int64) error {
 
 	return s.shopRepo.UpdateFields(ctx, shopID, map[string]interface{}{
 		"status":       model.ShopStatusPending,
-		"token_status": model.TokenStatusInvalid,
+		"token_status": model.ShopTokenStatusInvalid,
 	})
 }
 

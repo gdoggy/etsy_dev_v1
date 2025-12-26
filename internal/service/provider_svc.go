@@ -11,11 +11,11 @@ import (
 
 // NetworkProvider 专门实现  pkg/net.ProxyProvider 接口
 type NetworkProvider struct {
-	ShopRepo     *repository.ShopRepo
+	ShopRepo     repository.ShopRepository
 	ProxyService *ProxyService
 }
 
-func NewNetworkProvider(shopRepo *repository.ShopRepo, proxyService *ProxyService) *NetworkProvider {
+func NewNetworkProvider(shopRepo repository.ShopRepository, proxyService *ProxyService) *NetworkProvider {
 	return &NetworkProvider{
 		ShopRepo:     shopRepo,
 		ProxyService: proxyService,
@@ -49,7 +49,7 @@ func (n *NetworkProvider) GetProxy(ctx context.Context, shopID int64) (*url.URL,
 		}
 
 		// 绑定并更新
-		err = n.ShopRepo.UpdateProxyBinding(ctx, shop.ID, newProxy.ID)
+		err = n.ShopRepo.UpdateFields(ctx, shop.ID, map[string]interface{}{"proxy_id": newProxy.ID})
 		if err != nil {
 			return nil, err
 		}
@@ -77,7 +77,7 @@ func (n *NetworkProvider) ReportError(ctx context.Context, shopID int64) {
 	badProxy := shop.Proxy
 	log.Printf("[Network] 收到故障上报 ShopID=%d, Proxy=%s, 正在解绑...", shopID, badProxy.IP)
 	// 2. 解绑店铺 (业务动作)
-	if err = n.ShopRepo.UnbindProxy(ctx, shopID); err != nil {
+	if err = n.ShopRepo.UpdateFields(ctx, shopID, map[string]interface{}{"proxy_id": 0}); err != nil {
 		log.Printf("[Network] 解绑失败: %v", err)
 	}
 

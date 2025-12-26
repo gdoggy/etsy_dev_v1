@@ -9,7 +9,8 @@ type CreateDraftRequest struct {
 	UserID      int64   `json:"user_id" binding:"required"`
 	SourceURL   string  `json:"source_url" binding:"required"`
 	ShopIDs     []int64 `json:"shop_ids" binding:"required,min=1,max=10"`
-	ImageCount  int     `json:"image_count"` // 1-20, 默认20
+	ImageCount  int     `json:"image_count"`                       // 1-20, 默认20
+	Quantity    int     `json:"quantity" binding:"required,min=1"` // 库存数量
 	StyleHint   string  `json:"style_hint"`
 	ExtraPrompt string  `json:"extra_prompt"`
 }

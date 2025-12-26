@@ -19,12 +19,12 @@ const (
 )
 
 type DeveloperService struct {
-	DeveloperRepo *repository.DeveloperRepo
-	ShopRepo      *repository.ShopRepo
+	DeveloperRepo repository.DeveloperRepository
+	ShopRepo      repository.ShopRepository
 	Dispatcher    net.Dispatcher
 }
 
-func NewDeveloperService(developerRepo *repository.DeveloperRepo, shopRepo *repository.ShopRepo, dispatcher net.Dispatcher) *DeveloperService {
+func NewDeveloperService(developerRepo repository.DeveloperRepository, shopRepo repository.ShopRepository, dispatcher net.Dispatcher) *DeveloperService {
 	return &DeveloperService{
 		DeveloperRepo: developerRepo,
 		ShopRepo:      shopRepo,
@@ -34,7 +34,7 @@ func NewDeveloperService(developerRepo *repository.DeveloperRepo, shopRepo *repo
 
 // GetDeveloperByRegion 找到一个合适的 apiKey
 func (s *DeveloperService) GetDeveloperByRegion(ctx context.Context, region string) (*model.Developer, error) {
-	dev, err := s.DeveloperRepo.FindBestDevByRegion(ctx, region)
+	dev, err := s.DeveloperRepo.FindBestByRegion(ctx, region)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func (s *DeveloperService) InitDeveloper(ctx context.Context, developer *model.D
 }
 
 // GetDeveloperList 分页列表查询
-func (s *DeveloperService) GetDeveloperList(ctx context.Context, filter repository.DeveloperListFilter) ([]dto.DeveloperResp, int64, error) {
+func (s *DeveloperService) GetDeveloperList(ctx context.Context, filter repository.DeveloperFilter) ([]dto.DeveloperResp, int64, error) {
 	list, total, err := s.DeveloperRepo.List(ctx, filter)
 	if err != nil {
 		return nil, 0, err

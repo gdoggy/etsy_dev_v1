@@ -14,13 +14,13 @@ import (
 )
 
 type ProxyService struct {
-	ProxyRepo *repository.ProxyRepo
-	ShopRepo  *repository.ShopRepo
+	ProxyRepo repository.ProxyRepository
+	ShopRepo  repository.ShopRepository
 
 	maxFailCount int // 最大失败次数，超过判定 IP死亡
 }
 
-func NewProxyService(proxyRepo *repository.ProxyRepo, shopRepo *repository.ShopRepo) *ProxyService {
+func NewProxyService(proxyRepo repository.ProxyRepository, shopRepo repository.ShopRepository) *ProxyService {
 	return &ProxyService{
 		ProxyRepo:    proxyRepo,
 		ShopRepo:     shopRepo,
@@ -105,7 +105,7 @@ func (s *ProxyService) UpdateProxy(ctx context.Context, req dto.UpdateProxyReq, 
 // 2. 读取逻辑 (List / Get) - 重点在于 DTO 组装
 
 // GetProxyList 获取分页列表 (带关联统计)
-func (s *ProxyService) GetProxyList(ctx context.Context, filter repository.ProxyListFilter) ([]dto.ProxyResp, int64, error) {
+func (s *ProxyService) GetProxyList(ctx context.Context, filter repository.ProxyFilter) ([]dto.ProxyResp, int64, error) {
 	// 1. 调用 Repo 获取 Model 列表 (Repo 层已经 Preload 了 Shops 和 Developers)
 	list, total, err := s.ProxyRepo.List(ctx, filter)
 	if err != nil {
@@ -252,7 +252,7 @@ func (s *ProxyService) MigrateShops(ctx context.Context, deadProxy *model.Proxy)
 		}
 
 		// 更新绑定
-		if err := s.ShopRepo.UpdateProxyBinding(ctx, shop.ID, bestProxy.ID); err == nil {
+		if err := s.ShopRepo.UpdateFields(ctx, shop.ID, map[string]interface{}{"proxy_id": bestProxy.ID}); err == nil {
 			log.Printf("Shop %d migrated to Proxy %d", shop.ID, bestProxy.ID)
 		}
 	}

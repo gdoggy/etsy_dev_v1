@@ -1,7 +1,6 @@
 package model
 
 import (
-	"github.com/lib/pq"
 	"gorm.io/datatypes"
 )
 
@@ -82,10 +81,10 @@ type Product struct {
 	HasVariations               bool         `gorm:"default:false;comment:是否有变体"`
 	Language                    string       `gorm:"size:10;default:en;comment:语言"`
 
-	// --- 数组/标签类数据 ---
-	Tags      pq.StringArray `gorm:"type:text[];comment:标签(max 13个)"`
-	Materials pq.StringArray `gorm:"type:text[];comment:材质(max 13个)"`
-	Styles    pq.StringArray `gorm:"type:text[];comment:风格(max 2个)"`
+	// --- 数组/标签类数据（PostgreSQL JSONB）---
+	Tags      datatypes.JSONSlice[string] `gorm:"type:jsonb;comment:标签(max 13个)"`
+	Materials datatypes.JSONSlice[string] `gorm:"type:jsonb;comment:材质(max 13个)"`
+	Styles    datatypes.JSONSlice[string] `gorm:"type:jsonb;comment:风格(max 2个)"`
 
 	// --- 物理属性 (实物商品必填) ---
 	ItemWeight         float64 `gorm:"default:0;comment:重量"`
@@ -108,23 +107,23 @@ type Product struct {
 	Views       int `gorm:"default:0;comment:浏览数"`
 	NumFavorers int `gorm:"default:0;comment:收藏数"`
 
-	// --- 变体控制数组 ---
-	PriceOnProperty    pq.Int64Array `gorm:"type:bigint[];comment:影响价格的属性ID"`
-	QuantityOnProperty pq.Int64Array `gorm:"type:bigint[];comment:影响库存的属性ID"`
-	SkuOnProperty      pq.Int64Array `gorm:"type:bigint[];comment:影响SKU的属性ID"`
+	// --- 变体控制数组（PostgreSQL JSONB）---
+	PriceOnProperty    datatypes.JSONSlice[int64] `gorm:"type:jsonb;comment:影响价格的属性ID"`
+	QuantityOnProperty datatypes.JSONSlice[int64] `gorm:"type:jsonb;comment:影响库存的属性ID"`
+	SkuOnProperty      datatypes.JSONSlice[int64] `gorm:"type:jsonb;comment:影响SKU的属性ID"`
 
 	// --- 关联关系 ---
 	Variants []ProductVariant `gorm:"foreignKey:ProductID"`
 	Images   []ProductImage   `gorm:"foreignKey:ProductID"`
 
-	// --- AI 处理上下文 ---
-	SourceMaterial string            `gorm:"type:text;comment:AI生成来源素材"`
-	AiContext      datatypes.JSON    `gorm:"type:jsonb;comment:AI上下文"`
-	LockedFields   pq.StringArray    `gorm:"type:text[];comment:锁定不可AI修改的字段"`
-	EditStatus     ProductEditStatus `gorm:"default:0;index;comment:编辑状态"`
+	// --- AI 处理上下文（PostgreSQL JSONB）---
+	SourceMaterial string                      `gorm:"type:text;comment:AI生成来源素材"`
+	AiContext      datatypes.JSON              `gorm:"type:jsonb;comment:AI上下文"`
+	LockedFields   datatypes.JSONSlice[string] `gorm:"type:jsonb;comment:锁定不可AI修改的字段"`
+	EditStatus     ProductEditStatus           `gorm:"default:0;index;comment:编辑状态"`
 }
 
-func (Product) TableName() string {
+func (*Product) TableName() string {
 	return "products"
 }
 
@@ -140,7 +139,7 @@ type ProductVariant struct {
 	EtsyProductID  int64 `gorm:"index;comment:Etsy product_id"`
 	EtsyOfferingID int64 `gorm:"index;comment:Etsy offering_id"`
 
-	// --- 规格组合 ---
+	// --- 规格组合（PostgreSQL JSONB）---
 	PropertyValues datatypes.JSON `gorm:"type:jsonb;comment:属性值组合"`
 	EtsyRawProps   datatypes.JSON `gorm:"type:jsonb;comment:Etsy原始属性数据"`
 
@@ -156,7 +155,7 @@ type ProductVariant struct {
 	EtsySKU  string `gorm:"size:100;index;comment:Etsy SKU"`
 }
 
-func (ProductVariant) TableName() string {
+func (*ProductVariant) TableName() string {
 	return "product_variants"
 }
 

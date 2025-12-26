@@ -15,7 +15,6 @@ type CreateProductReq struct {
 
 	// 价格与库存
 	Price    float64 `json:"price" binding:"required,gt=0"` // 前端传小数, 后端转分
-	Currency string  `json:"currency"`                      // 默认 USD
 	Quantity int     `json:"quantity" binding:"required,gte=1"`
 
 	// 分类与运费

@@ -2,7 +2,7 @@ package dto
 
 import "time"
 
-// ================== Shop DTO ==================
+// ================== Shop && Shipping DTO ==================
 
 // ShopListReq 店铺列表请求
 type ShopListReq struct {

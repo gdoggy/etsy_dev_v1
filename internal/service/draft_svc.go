@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"etsy_dev_v1_202512/internal/api/dto"
 	"fmt"
 	"sync"
 	"time"
 
+	"gorm.io/datatypes"
+
+	"etsy_dev_v1_202512/internal/api/dto"
 	"etsy_dev_v1_202512/internal/model"
 	"etsy_dev_v1_202512/internal/repository"
 )
@@ -38,10 +40,11 @@ type StorageServiceInterface interface {
 
 // DraftService 草稿服务
 type DraftService struct {
-	uow     *repository.DraftUnitOfWork
-	scraper OneBoundServiceInterface
-	ai      AIServiceInterface
-	storage StorageServiceInterface
+	uow      *repository.DraftUnitOfWork
+	shopRepo repository.ShopRepository
+	scraper  OneBoundServiceInterface
+	ai       AIServiceInterface
+	storage  StorageServiceInterface
 
 	// 进度订阅管理
 	subscribers     map[int64][]chan dto.ProgressEvent
@@ -51,12 +54,14 @@ type DraftService struct {
 // NewDraftService 创建草稿服务
 func NewDraftService(
 	uow *repository.DraftUnitOfWork,
+	shopRepo repository.ShopRepository,
 	scraper OneBoundServiceInterface,
 	ai AIServiceInterface,
 	storage StorageServiceInterface,
 ) *DraftService {
 	return &DraftService{
 		uow:         uow,
+		shopRepo:    shopRepo,
 		scraper:     scraper,
 		ai:          ai,
 		storage:     storage,
@@ -119,13 +124,22 @@ func (s *DraftService) CreateDraft(ctx context.Context, req *dto.CreateDraftRequ
 		return nil, fmt.Errorf("不支持的商品链接: %v", err)
 	}
 
+	// 验证店铺存在
+	for _, shopID := range req.ShopIDs {
+		if _, err := s.shopRepo.GetByID(ctx, shopID); err != nil {
+			return nil, fmt.Errorf("店铺 %d 不存在", shopID)
+		}
+	}
+
 	// 设置默认值
 	imageCount := req.ImageCount
-	if imageCount <= 0 {
+	if imageCount <= 0 || imageCount > 20 {
 		imageCount = 20
 	}
-	if imageCount > 20 {
-		imageCount = 20
+
+	quantity := req.Quantity
+	if quantity <= 0 {
+		quantity = 1
 	}
 
 	// 创建任务
@@ -146,7 +160,7 @@ func (s *DraftService) CreateDraft(ctx context.Context, req *dto.CreateDraftRequ
 	}
 
 	// 异步处理
-	go s.processTask(task.ID, req.ShopIDs)
+	go s.processTask(task.ID, req.ShopIDs, quantity)
 
 	return &dto.CreateDraftResult{
 		TaskID:    task.ID,
@@ -155,8 +169,19 @@ func (s *DraftService) CreateDraft(ctx context.Context, req *dto.CreateDraftRequ
 	}, nil
 }
 
+// shopDraftResult 单个店铺草稿生成结果
+type shopDraftResult struct {
+	ShopID       int64
+	CurrencyCode string
+	Title        string
+	Description  string
+	Tags         []string
+	ImageURLs    []string
+	Error        error
+}
+
 // processTask 异步处理任务
-func (s *DraftService) processTask(taskID int64, shopIDs []int64) {
+func (s *DraftService) processTask(taskID int64, shopIDs []int64, quantity int) {
 	ctx := context.Background()
 
 	// 更新状态为处理中
@@ -169,7 +194,7 @@ func (s *DraftService) processTask(taskID int64, shopIDs []int64) {
 		return
 	}
 
-	// 1. 抓取商品数据
+	// 1. 抓取商品数据（共享）
 	s.notifyProgress(taskID, dto.ProgressEvent{
 		TaskID:   taskID,
 		Stage:    "fetching",
@@ -183,7 +208,7 @@ func (s *DraftService) processTask(taskID int64, shopIDs []int64) {
 		return
 	}
 
-	// 保存抓取数据
+	// 保存抓取数据（使用 datatypes.JSON）
 	sourceData := map[string]interface{}{
 		"platform":    product.Platform,
 		"item_id":     product.ItemID,
@@ -194,122 +219,192 @@ func (s *DraftService) processTask(taskID int64, shopIDs []int64) {
 		"description": product.Description,
 		"attributes":  product.Attributes,
 	}
+	sourceDataBytes, _ := json.Marshal(sourceData)
 	s.uow.Tasks.UpdateFields(ctx, taskID, map[string]interface{}{
-		"source_data": model.JSONMap(sourceData),
+		"source_data": datatypes.JSON(sourceDataBytes),
 	})
 
-	// 2. 生成 AI 文案
-	s.notifyProgress(taskID, dto.ProgressEvent{
-		TaskID:   taskID,
-		Stage:    "generating_text",
-		Progress: 30,
-		Message:  "正在生成商品文案...",
-	})
-
-	textResult, err := s.ai.GenerateProductContent(ctx, product.Title, task.StyleHint)
-	if err != nil {
-		s.failTask(ctx, taskID, "生成文案失败: "+err.Error())
-		return
-	}
-
-	// 保存 AI 文案结果
-	aiTextResult := map[string]interface{}{
-		"title":       textResult.Title,
-		"description": textResult.Description,
-		"tags":        textResult.Tags,
-	}
-	s.uow.Tasks.UpdateFields(ctx, taskID, map[string]interface{}{
-		"ai_text_result": model.JSONMap(aiTextResult),
-	})
-
-	// 3. 生成 AI 图片
-	s.notifyProgress(taskID, dto.ProgressEvent{
-		TaskID:   taskID,
-		Stage:    "generating_images",
-		Progress: 50,
-		Message:  "正在生成商品图片...",
-	})
-
+	// 获取参考图片
 	var refImageURL string
 	if len(product.Images) > 0 {
 		refImageURL = product.Images[0]
 	}
 
-	imagePrompt := fmt.Sprintf("Product photo of %s, professional e-commerce photography", textResult.Title)
-	base64Images, err := s.ai.GenerateImages(ctx, imagePrompt, refImageURL, task.ImageCount)
-	if err != nil {
-		s.failTask(ctx, taskID, "生成图片失败: "+err.Error())
-		return
-	}
+	// 2. 为每个店铺并发生成 AI 内容
+	s.notifyProgress(taskID, dto.ProgressEvent{
+		TaskID:   taskID,
+		Stage:    "generating",
+		Progress: 20,
+		Message:  fmt.Sprintf("正在为 %d 个店铺生成内容...", len(shopIDs)),
+	})
 
-	// 4. 保存图片
+	results := s.generateForShops(ctx, taskID, shopIDs, product.Title, task.StyleHint, task.ExtraPrompt, refImageURL, task.ImageCount)
+
+	// 3. 处理结果，创建草稿商品
 	s.notifyProgress(taskID, dto.ProgressEvent{
 		TaskID:   taskID,
 		Stage:    "saving",
 		Progress: 80,
-		Message:  "正在保存图片...",
+		Message:  "正在保存草稿商品...",
 	})
 
-	var imageURLs []string
-	var draftImages []model.DraftImage
+	var successCount int
+	var lastError string
 
-	for i, base64Data := range base64Images {
-		prefix := fmt.Sprintf("draft/%d/img_%d", taskID, i)
-		url, err := s.storage.SaveBase64(base64Data, prefix)
-		if err != nil {
-			continue // 跳过失败的图片
+	for _, result := range results {
+		if result.Error != nil {
+			lastError = result.Error.Error()
+			continue
 		}
-		imageURLs = append(imageURLs, url)
 
-		draftImages = append(draftImages, model.DraftImage{
-			TaskID:     taskID,
-			GroupIndex: 0,
-			ImageIndex: i,
-			StorageURL: url,
-			Status:     model.ImageStatusReady,
-		})
-	}
+		// 保存图片到 DraftImage
+		var draftImages []model.DraftImage
+		for i, url := range result.ImageURLs {
+			draftImages = append(draftImages, model.DraftImage{
+				TaskID:     taskID,
+				GroupIndex: int(result.ShopID), // 按店铺分组
+				ImageIndex: i,
+				StorageURL: url,
+				Status:     model.ImageStatusReady,
+			})
+		}
+		if len(draftImages) > 0 {
+			s.uow.Images.CreateBatch(ctx, draftImages)
+		}
 
-	if len(draftImages) > 0 {
-		s.uow.Images.CreateBatch(ctx, draftImages)
-	}
-
-	// 更新任务的 AI 图片
-	s.uow.Tasks.UpdateFields(ctx, taskID, map[string]interface{}{
-		"ai_images": model.StringSlice(imageURLs),
-	})
-
-	// 5. 创建草稿商品
-	var draftProducts []model.DraftProduct
-	for _, shopID := range shopIDs {
-		draftProducts = append(draftProducts, model.DraftProduct{
+		// 创建草稿商品（使用 datatypes.JSONSlice）
+		draftProduct := model.DraftProduct{
 			TaskID:         taskID,
-			ShopID:         shopID,
-			Title:          textResult.Title,
-			Description:    textResult.Description,
-			Tags:           model.StringSlice(textResult.Tags),
-			SelectedImages: model.StringSlice(imageURLs),
-			CurrencyCode:   "USD",
-			Quantity:       1,
+			ShopID:         result.ShopID,
+			Title:          result.Title,
+			Description:    result.Description,
+			Tags:           datatypes.JSONSlice[string](result.Tags),
+			SelectedImages: datatypes.JSONSlice[string](result.ImageURLs),
+			CurrencyCode:   result.CurrencyCode,
+			Quantity:       quantity,
 			Status:         model.DraftStatusDraft,
 			SyncStatus:     model.DraftSyncStatusNone,
-		})
+		}
+
+		if err := s.uow.Products.Create(ctx, &draftProduct); err != nil {
+			lastError = err.Error()
+			continue
+		}
+
+		successCount++
 	}
 
-	if err := s.uow.Products.CreateBatch(ctx, draftProducts); err != nil {
-		s.failTask(ctx, taskID, "创建草稿商品失败: "+err.Error())
+	// 4. 更新任务状态
+	if successCount == 0 {
+		s.failTask(ctx, taskID, "所有店铺生成均失败: "+lastError)
 		return
 	}
 
-	// 6. 完成
+	// 部分成功也算完成
 	s.uow.Tasks.UpdateStatus(ctx, taskID, model.TaskStatusDraft, model.AIStatusDone)
 
 	s.notifyProgress(taskID, dto.ProgressEvent{
 		TaskID:   taskID,
 		Stage:    "done",
 		Progress: 100,
-		Message:  "处理完成",
+		Message:  fmt.Sprintf("处理完成，成功生成 %d/%d 个店铺草稿", successCount, len(shopIDs)),
 	})
+}
+
+// generateForShops 并发为多个店铺生成内容
+func (s *DraftService) generateForShops(
+	ctx context.Context,
+	taskID int64,
+	shopIDs []int64,
+	sourceTitle, styleHint, extraPrompt, refImageURL string,
+	imageCount int,
+) []shopDraftResult {
+	results := make([]shopDraftResult, len(shopIDs))
+
+	// 风格变体，确保每个店铺生成不同的内容
+	styleVariants := []string{
+		"minimalist modern style",
+		"warm cozy aesthetic",
+		"elegant premium look",
+		"vibrant colorful design",
+		"natural organic feel",
+	}
+
+	var wg sync.WaitGroup
+	for i, shopID := range shopIDs {
+		wg.Add(1)
+		go func(idx int, sid int64) {
+			defer wg.Done()
+
+			result := shopDraftResult{ShopID: sid}
+
+			// 获取店铺货币
+			shop, err := s.shopRepo.GetByID(ctx, sid)
+			if err != nil {
+				result.Error = fmt.Errorf("获取店铺失败: %v", err)
+				results[idx] = result
+				return
+			}
+			result.CurrencyCode = shop.CurrencyCode
+			if result.CurrencyCode == "" {
+				result.CurrencyCode = "USD" // 默认值
+			}
+
+			// 组合风格提示（原始 + 变体）
+			variantStyle := styleVariants[idx%len(styleVariants)]
+			combinedStyle := variantStyle
+			if styleHint != "" {
+				combinedStyle = styleHint + ", " + variantStyle
+			}
+			if extraPrompt != "" {
+				combinedStyle = combinedStyle + ". " + extraPrompt
+			}
+
+			// 生成文案
+			textResult, err := s.ai.GenerateProductContent(ctx, sourceTitle, combinedStyle)
+			if err != nil {
+				result.Error = fmt.Errorf("生成文案失败: %v", err)
+				results[idx] = result
+				return
+			}
+			result.Title = textResult.Title
+			result.Description = textResult.Description
+			result.Tags = textResult.Tags
+
+			// 生成图片
+			imagePrompt := fmt.Sprintf("Product photo of %s, %s, professional e-commerce photography",
+				textResult.Title, variantStyle)
+			base64Images, err := s.ai.GenerateImages(ctx, imagePrompt, refImageURL, imageCount)
+			if err != nil {
+				result.Error = fmt.Errorf("生成图片失败: %v", err)
+				results[idx] = result
+				return
+			}
+
+			// 保存图片
+			var imageURLs []string
+			for j, base64Data := range base64Images {
+				prefix := fmt.Sprintf("draft/%d/shop_%d/img_%d", taskID, sid, j)
+				url, err := s.storage.SaveBase64(base64Data, prefix)
+				if err != nil {
+					continue // 跳过失败的图片
+				}
+				imageURLs = append(imageURLs, url)
+			}
+
+			if len(imageURLs) == 0 {
+				result.Error = fmt.Errorf("所有图片保存失败")
+				results[idx] = result
+				return
+			}
+
+			result.ImageURLs = imageURLs
+			results[idx] = result
+		}(i, shopID)
+	}
+
+	wg.Wait()
+	return results
 }
 
 // failTask 标记任务失败
@@ -382,47 +477,42 @@ func (s *DraftService) GetTaskDetail(ctx context.Context, taskID int64) (*dto.Dr
 		UpdatedAt:    task.UpdatedAt.Format(time.RFC3339),
 	}
 
-	// 解析源商品数据
+	// 解析源商品数据（从 datatypes.JSON）
 	var sourceProduct dto.ScrapedProductVO
-	if task.SourceData != nil {
-		sourceProduct = dto.ScrapedProductVO{
-			Platform:    getMapString(task.SourceData, "platform"),
-			ItemID:      getMapString(task.SourceData, "item_id"),
-			Title:       getMapString(task.SourceData, "title"),
-			Price:       getMapFloat(task.SourceData, "price"),
-			Currency:    getMapString(task.SourceData, "currency"),
-			Description: getMapString(task.SourceData, "description"),
-		}
-		if images, ok := task.SourceData["images"].([]interface{}); ok {
-			for _, img := range images {
-				if s, ok := img.(string); ok {
-					sourceProduct.Images = append(sourceProduct.Images, s)
+	if len(task.SourceData) > 0 {
+		var sourceMap map[string]interface{}
+		if err := json.Unmarshal(task.SourceData, &sourceMap); err == nil {
+			sourceProduct = dto.ScrapedProductVO{
+				Platform:    getMapString(sourceMap, "platform"),
+				ItemID:      getMapString(sourceMap, "item_id"),
+				Title:       getMapString(sourceMap, "title"),
+				Price:       getMapFloat(sourceMap, "price"),
+				Currency:    getMapString(sourceMap, "currency"),
+				Description: getMapString(sourceMap, "description"),
+			}
+			if images, ok := sourceMap["images"].([]interface{}); ok {
+				for _, img := range images {
+					if str, ok := img.(string); ok {
+						sourceProduct.Images = append(sourceProduct.Images, str)
+					}
 				}
 			}
 		}
 	}
 
-	// 解析 AI 结果
-	var aiResult dto.AIGenerateResult
-	if task.AITextResult != nil {
-		aiResult.Title = getMapString(task.AITextResult, "title")
-		aiResult.Description = getMapString(task.AITextResult, "description")
-		if tags, ok := task.AITextResult["tags"].([]interface{}); ok {
-			for _, tag := range tags {
-				if s, ok := tag.(string); ok {
-					aiResult.Tags = append(aiResult.Tags, s)
-				}
-			}
-		}
-	}
-	aiResult.Images = []string(task.AIImages)
-
-	// 转换商品
+	// 转换商品（每个店铺有独立的 AI 结果）
 	productVOs := make([]dto.DraftProductVO, len(products))
 	for i, p := range products {
+		// 获取店铺名称
+		shopName := ""
+		if shop, err := s.shopRepo.GetByID(ctx, p.ShopID); err == nil {
+			shopName = shop.ShopName
+		}
+
 		productVOs[i] = dto.DraftProductVO{
 			ID:                p.ID,
 			ShopID:            p.ShopID,
+			ShopName:          shopName,
 			Status:            p.Status,
 			SyncStatus:        p.SyncStatus,
 			Title:             p.Title,
@@ -443,7 +533,7 @@ func (s *DraftService) GetTaskDetail(ctx context.Context, taskID int64) (*dto.Dr
 	return &dto.DraftDetailResponse{
 		Task:          taskVO,
 		SourceProduct: &sourceProduct,
-		AIResult:      &aiResult,
+		AIResult:      nil, // 每个店铺有独立结果，不再有统一的 AIResult
 		Products:      productVOs,
 	}, nil
 }
@@ -469,13 +559,13 @@ func (s *DraftService) UpdateDraftProduct(ctx context.Context, productID int64, 
 		updates["description"] = *req.Description
 	}
 	if len(req.Tags) > 0 {
-		updates["tags"] = model.StringSlice(req.Tags)
+		updates["tags"] = datatypes.JSONSlice[string](req.Tags)
 	}
 	if req.Price != nil {
 		updates["price_amount"] = int64(*req.Price * 100)
 	}
 	if len(req.SelectedImages) > 0 {
-		updates["selected_images"] = model.StringSlice(req.SelectedImages)
+		updates["selected_images"] = datatypes.JSONSlice[string](req.SelectedImages)
 	}
 	if req.Quantity != nil {
 		updates["quantity"] = *req.Quantity

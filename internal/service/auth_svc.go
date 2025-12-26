@@ -64,7 +64,7 @@ func (s *AuthService) GenerateLoginURL(ctx context.Context, shopID int64, region
 
 	// 2. 严格校验，绑定开发者账号
 	if shop.DeveloperID == 0 || shop.Developer.ID == 0 {
-		shop.Developer, err = s.ShopService.developerRepo.FindBestDevByRegion(ctx, shop.Region)
+		shop.Developer, err = s.ShopService.developerRepo.FindBestByRegion(ctx, shop.Region)
 		if err != nil {
 			return "", err
 		}
@@ -143,7 +143,7 @@ func (s *AuthService) HandleCallback(ctx context.Context, code, state string) (*
 	// 5. 通过 dispatcher 发送换取 Token
 	tokenResp, err := s.dispatcher.Send(ctx, shopID, req)
 	if err != nil {
-		//s.updateTokenStatus(&shop, model.TokenStatusInvalid)
+		//s.updateTokenStatus(&shop, model.ShopTokenStatusInvalid)
 		return shop, fmt.Errorf("换取 Token 失败: %v", err)
 	}
 	defer tokenResp.Body.Close()
@@ -161,9 +161,9 @@ func (s *AuthService) HandleCallback(ctx context.Context, code, state string) (*
 	shop.AccessToken = etsyResp.AccessToken
 	shop.RefreshToken = etsyResp.RefreshToken
 	shop.TokenExpiresAt = time.Now().Add(time.Duration(etsyResp.ExpiresIn) * time.Second)
-	shop.TokenStatus = model.TokenStatusExpired
+	shop.TokenStatus = model.ShopTokenStatusExpired
 	// 入库保存
-	if err = s.ShopService.shopRepo.SaveOrUpdate(ctx, shop); err != nil {
+	if err = s.ShopService.shopRepo.Update(ctx, shop); err != nil {
 		return shop, fmt.Errorf("店铺入库失败: %v", err)
 	}
 
@@ -202,7 +202,7 @@ func (s *AuthService) RefreshAccessToken(ctx context.Context, shop *model.Shop) 
 	// B. 业务层错误 (Etsy 明确拒绝)
 	if resp.StatusCode != 200 {
 		// 只有明确收到 400/401 才标记为失效
-		err = s.ShopService.shopRepo.UpdateTokenStatus(ctx, shop.ID, model.TokenStatusInvalid)
+		err = s.ShopService.shopRepo.UpdateFields(ctx, shop.ID, map[string]interface{}{"token_status": model.ShopTokenStatusInvalid})
 		return fmt.Errorf("refresh denied by ETSY: %d, err: %v", resp.StatusCode, err)
 	}
 
@@ -217,5 +217,5 @@ func (s *AuthService) RefreshAccessToken(ctx context.Context, shop *model.Shop) 
 	shop.RefreshToken = tokenResp.RefreshToken
 	shop.TokenExpiresAt = time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
 
-	return s.ShopService.shopRepo.SaveOrUpdate(ctx, shop)
+	return s.ShopService.shopRepo.Update(ctx, shop)
 }

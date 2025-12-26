@@ -16,16 +16,16 @@ import (
 )
 
 type ProductService struct {
-	ProductRepo *repository.ProductRepo
-	ShopRepo    *repository.ShopRepo
+	ProductRepo repository.ProductRepository
+	ShopRepo    repository.ShopRepository
 	AIService   *AIService
 	Storage     *StorageService
 	Dispatcher  net.Dispatcher
 }
 
 func NewProductService(
-	productRepo *repository.ProductRepo,
-	shopRepo *repository.ShopRepo,
+	productRepo repository.ProductRepository,
+	shopRepo repository.ShopRepository,
 	ai *AIService,
 	storage *StorageService,
 	dispatcher net.Dispatcher,
@@ -147,18 +147,15 @@ func (s *ProductService) CreateDraftListing(ctx context.Context, req *dto.Create
 	if err != nil {
 		return nil, fmt.Errorf("店铺不存在: %v", err)
 	}
-	if shop.TokenStatus == model.TokenStatusInvalid {
+	if shop.TokenStatus == model.ShopTokenStatusInvalid {
 		return nil, fmt.Errorf("授权已失效，请重新授权")
 	}
 
 	// 2. 构建 Etsy API 请求体
 	priceAmount := int64(math.Round(req.Price * 100))
-	currency := req.Currency
+	currency := shop.CurrencyCode
 	if currency == "" {
-		currency = shop.CurrencyCode
-		if currency == "" {
-			currency = "USD"
-		}
+		currency = "USD"
 	}
 
 	payload := map[string]interface{}{
@@ -477,7 +474,7 @@ func (s *ProductService) SyncListingsFromEtsy(ctx context.Context, shopID int64)
 	if err != nil {
 		return err
 	}
-	if shop.TokenStatus == model.TokenStatusInvalid {
+	if shop.TokenStatus == model.ShopTokenStatusInvalid {
 		return fmt.Errorf("授权已失效")
 	}
 

@@ -2,30 +2,87 @@ package repository
 
 import (
 	"context"
-	"etsy_dev_v1_202512/internal/model"
-	"fmt"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"etsy_dev_v1_202512/internal/model"
 )
 
-type ProductRepo struct {
+// ==================== 接口定义 ====================
+
+// ProductRepository 商品仓储接口
+type ProductRepository interface {
+	// 基础 CRUD
+	Create(ctx context.Context, product *model.Product) error
+	GetByID(ctx context.Context, id int64) (*model.Product, error)
+	GetByListingID(ctx context.Context, listingID int64) (*model.Product, error)
+	Update(ctx context.Context, product *model.Product) error
+	UpdateFields(ctx context.Context, id int64, fields map[string]interface{}) error
+	Delete(ctx context.Context, id int64) error
+	HardDelete(ctx context.Context, id int64) error
+	List(ctx context.Context, filter ProductFilter) ([]model.Product, int64, error)
+
+	// 列表查询
+	ListByShop(ctx context.Context, shopID int64, page, pageSize int) ([]model.Product, int64, error)
+	ListByShopAndState(ctx context.Context, shopID int64, state model.ProductState, page, pageSize int) ([]model.Product, int64, error)
+	ListBySyncStatus(ctx context.Context, status model.ProductSyncStatus, limit int) ([]model.Product, error)
+	ListByEditStatus(ctx context.Context, shopID int64, status model.ProductEditStatus) ([]model.Product, error)
+	SearchByTitle(ctx context.Context, shopID int64, keyword string, page, pageSize int) ([]model.Product, int64, error)
+
+	// 批量操作
+	BatchUpsert(ctx context.Context, products []model.Product) error
+	BatchUpdateSyncStatus(ctx context.Context, ids []int64, status model.ProductSyncStatus, errMsg string) error
+
+	// 变体操作
+	CreateVariant(ctx context.Context, variant *model.ProductVariant) error
+	BatchUpsertVariants(ctx context.Context, variants []model.ProductVariant) error
+	DeleteVariantsByProductID(ctx context.Context, productID int64) error
+
+	// 图片操作
+	CreateImage(ctx context.Context, image *model.ProductImage) error
+	UpdateImage(ctx context.Context, image *model.ProductImage) error
+	GetImagesByProductID(ctx context.Context, productID int64) ([]model.ProductImage, error)
+	DeleteImage(ctx context.Context, id int64) error
+	BatchUpsertImages(ctx context.Context, images []model.ProductImage) error
+
+	// 统计
+	CountByShopAndState(ctx context.Context, shopID int64) (map[model.ProductState]int64, error)
+
+	// 事务
+	WithTx(tx *gorm.DB) ProductRepository
+	Transaction(ctx context.Context, fn func(txRepo ProductRepository) error) error
+}
+
+// ==================== 过滤条件 ====================
+
+// ProductFilter 商品过滤条件
+type ProductFilter struct {
+	ShopID     int64
+	State      model.ProductState
+	SyncStatus int
+	EditStatus model.ProductEditStatus
+	Keyword    string
+	Page       int
+	PageSize   int
+}
+
+// ==================== 仓储实现 ====================
+
+type productRepo struct {
 	db *gorm.DB
 }
 
-func NewProductRepo(db *gorm.DB) *ProductRepo {
-	return &ProductRepo{db: db}
+// NewProductRepository 创建商品仓储
+func NewProductRepository(db *gorm.DB) ProductRepository {
+	return &productRepo{db: db}
 }
 
-// ==================== 基础 CRUD ====================
-
-// Create 创建单个商品
-func (r *ProductRepo) Create(ctx context.Context, product *model.Product) error {
+func (r *productRepo) Create(ctx context.Context, product *model.Product) error {
 	return r.db.WithContext(ctx).Create(product).Error
 }
 
-// GetByID 根据 ID 获取商品
-func (r *ProductRepo) GetByID(ctx context.Context, id int64) (*model.Product, error) {
+func (r *productRepo) GetByID(ctx context.Context, id int64) (*model.Product, error) {
 	var product model.Product
 	err := r.db.WithContext(ctx).
 		Preload("Variants").
@@ -37,8 +94,7 @@ func (r *ProductRepo) GetByID(ctx context.Context, id int64) (*model.Product, er
 	return &product, nil
 }
 
-// GetByListingID 根据 Etsy ListingID 获取商品
-func (r *ProductRepo) GetByListingID(ctx context.Context, listingID int64) (*model.Product, error) {
+func (r *productRepo) GetByListingID(ctx context.Context, listingID int64) (*model.Product, error) {
 	var product model.Product
 	err := r.db.WithContext(ctx).
 		Preload("Variants").
@@ -51,75 +107,88 @@ func (r *ProductRepo) GetByListingID(ctx context.Context, listingID int64) (*mod
 	return &product, nil
 }
 
-// Update 更新商品
-func (r *ProductRepo) Update(ctx context.Context, product *model.Product) error {
+func (r *productRepo) Update(ctx context.Context, product *model.Product) error {
 	return r.db.WithContext(ctx).Save(product).Error
 }
 
-// Delete 软删除商品 (标记状态为 removed)
-func (r *ProductRepo) Delete(ctx context.Context, id int64) error {
+func (r *productRepo) UpdateFields(ctx context.Context, id int64, fields map[string]interface{}) error {
+	return r.db.WithContext(ctx).
+		Model(&model.Product{}).
+		Where("id = ?", id).
+		Updates(fields).Error
+}
+
+func (r *productRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).
 		Model(&model.Product{}).
 		Where("id = ?", id).
 		Update("state", model.ProductStateRemoved).Error
 }
 
-// HardDelete 物理删除商品
-func (r *ProductRepo) HardDelete(ctx context.Context, id int64) error {
+func (r *productRepo) HardDelete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Delete(&model.Product{}, id).Error
 }
 
-// ==================== 列表查询 ====================
-
-// ListByShop 分页查询店铺商品
-func (r *ProductRepo) ListByShop(ctx context.Context, shopID int64, page, pageSize int) ([]model.Product, int64, error) {
+func (r *productRepo) List(ctx context.Context, filter ProductFilter) ([]model.Product, int64, error) {
 	var products []model.Product
 	var total int64
 
-	query := r.db.WithContext(ctx).
-		Model(&model.Product{}).
-		Where("shop_id = ?", shopID).
-		Where("state != ?", model.ProductStateRemoved)
+	query := r.db.WithContext(ctx).Model(&model.Product{})
+
+	if filter.ShopID > 0 {
+		query = query.Where("shop_id = ?", filter.ShopID)
+	}
+	if filter.State != "" {
+		query = query.Where("state = ?", filter.State)
+	} else {
+		query = query.Where("state != ?", model.ProductStateRemoved)
+	}
+	if filter.SyncStatus >= 0 {
+		query = query.Where("sync_status = ?", filter.SyncStatus)
+	}
+	if filter.Keyword != "" {
+		query = query.Where("title ILIKE ?", "%"+filter.Keyword+"%")
+	}
 
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	offset := (page - 1) * pageSize
+	if filter.Page <= 0 {
+		filter.Page = 1
+	}
+	if filter.PageSize <= 0 {
+		filter.PageSize = 20
+	}
+
+	offset := (filter.Page - 1) * filter.PageSize
 	err := query.
 		Order("updated_at DESC").
-		Limit(pageSize).
+		Limit(filter.PageSize).
 		Offset(offset).
 		Find(&products).Error
 
 	return products, total, err
 }
 
-// ListByShopAndState 按店铺和状态查询
-func (r *ProductRepo) ListByShopAndState(ctx context.Context, shopID int64, state model.ProductState, page, pageSize int) ([]model.Product, int64, error) {
-	var products []model.Product
-	var total int64
-
-	query := r.db.WithContext(ctx).
-		Model(&model.Product{}).
-		Where("shop_id = ? AND state = ?", shopID, state)
-
-	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-
-	offset := (page - 1) * pageSize
-	err := query.
-		Order("updated_at DESC").
-		Limit(pageSize).
-		Offset(offset).
-		Find(&products).Error
-
-	return products, total, err
+func (r *productRepo) ListByShop(ctx context.Context, shopID int64, page, pageSize int) ([]model.Product, int64, error) {
+	return r.List(ctx, ProductFilter{
+		ShopID:   shopID,
+		Page:     page,
+		PageSize: pageSize,
+	})
 }
 
-// ListBySyncStatus 按同步状态查询 (用于后台任务)
-func (r *ProductRepo) ListBySyncStatus(ctx context.Context, status model.ProductSyncStatus, limit int) ([]model.Product, error) {
+func (r *productRepo) ListByShopAndState(ctx context.Context, shopID int64, state model.ProductState, page, pageSize int) ([]model.Product, int64, error) {
+	return r.List(ctx, ProductFilter{
+		ShopID:   shopID,
+		State:    state,
+		Page:     page,
+		PageSize: pageSize,
+	})
+}
+
+func (r *productRepo) ListBySyncStatus(ctx context.Context, status model.ProductSyncStatus, limit int) ([]model.Product, error) {
 	var products []model.Product
 	err := r.db.WithContext(ctx).
 		Preload("Shop").
@@ -132,8 +201,7 @@ func (r *ProductRepo) ListBySyncStatus(ctx context.Context, status model.Product
 	return products, err
 }
 
-// ListByEditStatus 按编辑状态查询 (AI草稿流程)
-func (r *ProductRepo) ListByEditStatus(ctx context.Context, shopID int64, status model.ProductEditStatus) ([]model.Product, error) {
+func (r *productRepo) ListByEditStatus(ctx context.Context, shopID int64, status model.ProductEditStatus) ([]model.Product, error) {
 	var products []model.Product
 	err := r.db.WithContext(ctx).
 		Where("shop_id = ? AND edit_status = ?", shopID, status).
@@ -142,14 +210,19 @@ func (r *ProductRepo) ListByEditStatus(ctx context.Context, shopID int64, status
 	return products, err
 }
 
-// ==================== 批量操作 ====================
+func (r *productRepo) SearchByTitle(ctx context.Context, shopID int64, keyword string, page, pageSize int) ([]model.Product, int64, error) {
+	return r.List(ctx, ProductFilter{
+		ShopID:   shopID,
+		Keyword:  keyword,
+		Page:     page,
+		PageSize: pageSize,
+	})
+}
 
-// BatchUpsert 批量插入或更新 (按 listing_id 冲突检测)
-func (r *ProductRepo) BatchUpsert(ctx context.Context, products []model.Product) error {
+func (r *productRepo) BatchUpsert(ctx context.Context, products []model.Product) error {
 	if len(products) == 0 {
 		return nil
 	}
-
 	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "listing_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
@@ -163,8 +236,7 @@ func (r *ProductRepo) BatchUpsert(ctx context.Context, products []model.Product)
 	}).Create(&products).Error
 }
 
-// BatchUpdateSyncStatus 批量更新同步状态
-func (r *ProductRepo) BatchUpdateSyncStatus(ctx context.Context, ids []int64, status model.ProductSyncStatus, errMsg string) error {
+func (r *productRepo) BatchUpdateSyncStatus(ctx context.Context, ids []int64, status model.ProductSyncStatus, errMsg string) error {
 	return r.db.WithContext(ctx).
 		Model(&model.Product{}).
 		Where("id IN ?", ids).
@@ -174,19 +246,14 @@ func (r *ProductRepo) BatchUpdateSyncStatus(ctx context.Context, ids []int64, st
 		}).Error
 }
 
-// ==================== 变体操作 ====================
-
-// CreateVariant 创建变体
-func (r *ProductRepo) CreateVariant(ctx context.Context, variant *model.ProductVariant) error {
+func (r *productRepo) CreateVariant(ctx context.Context, variant *model.ProductVariant) error {
 	return r.db.WithContext(ctx).Create(variant).Error
 }
 
-// BatchUpsertVariants 批量更新变体
-func (r *ProductRepo) BatchUpsertVariants(ctx context.Context, variants []model.ProductVariant) error {
+func (r *productRepo) BatchUpsertVariants(ctx context.Context, variants []model.ProductVariant) error {
 	if len(variants) == 0 {
 		return nil
 	}
-
 	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "product_id"}, {Name: "etsy_product_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
@@ -197,27 +264,21 @@ func (r *ProductRepo) BatchUpsertVariants(ctx context.Context, variants []model.
 	}).Create(&variants).Error
 }
 
-// DeleteVariantsByProductID 删除商品所有变体
-func (r *ProductRepo) DeleteVariantsByProductID(ctx context.Context, productID int64) error {
+func (r *productRepo) DeleteVariantsByProductID(ctx context.Context, productID int64) error {
 	return r.db.WithContext(ctx).
 		Where("product_id = ?", productID).
 		Delete(&model.ProductVariant{}).Error
 }
 
-// ==================== 图片操作 ====================
-
-// CreateImage 创建图片记录
-func (r *ProductRepo) CreateImage(ctx context.Context, image *model.ProductImage) error {
+func (r *productRepo) CreateImage(ctx context.Context, image *model.ProductImage) error {
 	return r.db.WithContext(ctx).Create(image).Error
 }
 
-// UpdateImage 更新图片记录
-func (r *ProductRepo) UpdateImage(ctx context.Context, image *model.ProductImage) error {
+func (r *productRepo) UpdateImage(ctx context.Context, image *model.ProductImage) error {
 	return r.db.WithContext(ctx).Save(image).Error
 }
 
-// GetImagesByProductID 获取商品所有图片
-func (r *ProductRepo) GetImagesByProductID(ctx context.Context, productID int64) ([]model.ProductImage, error) {
+func (r *productRepo) GetImagesByProductID(ctx context.Context, productID int64) ([]model.ProductImage, error) {
 	var images []model.ProductImage
 	err := r.db.WithContext(ctx).
 		Where("product_id = ?", productID).
@@ -226,17 +287,14 @@ func (r *ProductRepo) GetImagesByProductID(ctx context.Context, productID int64)
 	return images, err
 }
 
-// DeleteImage 删除图片
-func (r *ProductRepo) DeleteImage(ctx context.Context, id int64) error {
+func (r *productRepo) DeleteImage(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Delete(&model.ProductImage{}, id).Error
 }
 
-// BatchUpsertImages 批量更新图片
-func (r *ProductRepo) BatchUpsertImages(ctx context.Context, images []model.ProductImage) error {
+func (r *productRepo) BatchUpsertImages(ctx context.Context, images []model.ProductImage) error {
 	if len(images) == 0 {
 		return nil
 	}
-
 	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "product_id"}, {Name: "etsy_image_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
@@ -246,10 +304,7 @@ func (r *ProductRepo) BatchUpsertImages(ctx context.Context, images []model.Prod
 	}).Create(&images).Error
 }
 
-// ==================== 统计查询 ====================
-
-// CountByShopAndState 统计店铺各状态商品数量
-func (r *ProductRepo) CountByShopAndState(ctx context.Context, shopID int64) (map[model.ProductState]int64, error) {
+func (r *productRepo) CountByShopAndState(ctx context.Context, shopID int64) (map[model.ProductState]int64, error) {
 	type result struct {
 		State model.ProductState
 		Count int64
@@ -274,42 +329,11 @@ func (r *ProductRepo) CountByShopAndState(ctx context.Context, shopID int64) (ma
 	return stats, nil
 }
 
-// ==================== 搜索 ====================
-
-// SearchByTitle 按标题模糊搜索
-func (r *ProductRepo) SearchByTitle(ctx context.Context, shopID int64, keyword string, page, pageSize int) ([]model.Product, int64, error) {
-	var products []model.Product
-	var total int64
-
-	query := r.db.WithContext(ctx).
-		Model(&model.Product{}).
-		Where("shop_id = ?", shopID).
-		Where("state != ?", model.ProductStateRemoved).
-		Where("title ILIKE ?", fmt.Sprintf("%%%s%%", keyword))
-
-	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-
-	offset := (page - 1) * pageSize
-	err := query.
-		Order("updated_at DESC").
-		Limit(pageSize).
-		Offset(offset).
-		Find(&products).Error
-
-	return products, total, err
+func (r *productRepo) WithTx(tx *gorm.DB) ProductRepository {
+	return &productRepo{db: tx}
 }
 
-// ==================== 事务支持 ====================
-
-// WithTx 返回带事务的 Repo
-func (r *ProductRepo) WithTx(tx *gorm.DB) *ProductRepo {
-	return &ProductRepo{db: tx}
-}
-
-// Transaction 执行事务
-func (r *ProductRepo) Transaction(ctx context.Context, fn func(txRepo *ProductRepo) error) error {
+func (r *productRepo) Transaction(ctx context.Context, fn func(txRepo ProductRepository) error) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return fn(r.WithTx(tx))
 	})

@@ -13,9 +13,9 @@ const (
 
 // Token 状态常量
 const (
-	TokenStatusValid   = "valid"        // 有效
-	TokenStatusExpired = "expired"      // 已过期
-	TokenStatusInvalid = "auth_invalid" // 需重新授权
+	ShopTokenStatusValid   = "valid"        // 有效
+	ShopTokenStatusExpired = "expired"      // 已过期
+	ShopTokenStatusInvalid = "auth_invalid" // 需重新授权
 )
 
 type Shop struct {

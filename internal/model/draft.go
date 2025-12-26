@@ -1,11 +1,10 @@
 package model
 
 import (
-	"database/sql/driver"
-	"encoding/json"
 	"errors"
 	"time"
 
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -44,73 +43,27 @@ const (
 	ImageStatusFailed  = "failed"
 )
 
-// ==================== JSON 类型 ====================
-
-// StringSlice 字符串切片（JSON 存储）
-type StringSlice []string
-
-func (s *StringSlice) Value() (driver.Value, error) {
-	if s == nil {
-		return "[]", nil
-	}
-	return json.Marshal(s)
-}
-
-func (s *StringSlice) Scan(value interface{}) error {
-	if value == nil {
-		*s = []string{}
-		return nil
-	}
-	bytes, ok := value.([]byte)
-	if !ok {
-		return errors.New("type assertion to []byte failed")
-	}
-	return json.Unmarshal(bytes, s)
-}
-
-// JSONMap JSON对象（map 存储）
-type JSONMap map[string]interface{}
-
-func (m *JSONMap) Value() (driver.Value, error) {
-	if m == nil {
-		return "{}", nil
-	}
-	return json.Marshal(m)
-}
-
-func (m *JSONMap) Scan(value interface{}) error {
-	if value == nil {
-		*m = make(map[string]interface{})
-		return nil
-	}
-	bytes, ok := value.([]byte)
-	if !ok {
-		return errors.New("type assertion to []byte failed")
-	}
-	return json.Unmarshal(bytes, m)
-}
-
 // ==================== 数据库模型 ====================
 
 // DraftTask 草稿任务
 type DraftTask struct {
-	ID             int64          `gorm:"primaryKey;autoIncrement"`
-	CreatedAt      time.Time      `gorm:"index"`
-	UpdatedAt      time.Time      `gorm:"index"`
-	DeletedAt      gorm.DeletedAt `gorm:"index"`
-	UserID         int64          `gorm:"index;not null;comment:用户ID"`
-	SourceURL      string         `gorm:"size:2048;not null;comment:源商品URL"`
-	SourcePlatform string         `gorm:"size:32;index;comment:来源平台"`
-	SourceItemID   string         `gorm:"size:64;index;comment:来源商品ID"`
-	SourceData     JSONMap        `gorm:"type:json;comment:抓取的原始数据"`
-	ImageCount     int            `gorm:"default:20;comment:生成图片数量"`
-	StyleHint      string         `gorm:"size:255;comment:风格提示"`
-	ExtraPrompt    string         `gorm:"type:text;comment:额外提示词"`
-	Status         string         `gorm:"size:32;index;default:pending;comment:任务状态"`
-	AIStatus       string         `gorm:"size:32;index;default:pending;comment:AI处理状态"`
-	AITextResult   JSONMap        `gorm:"type:json;comment:AI文案结果"`
-	AIImages       StringSlice    `gorm:"type:json;comment:AI生成图片URL"`
-	AIErrorMessage string         `gorm:"size:1024;comment:AI处理错误信息"`
+	ID             int64                       `gorm:"primaryKey;autoIncrement"`
+	CreatedAt      time.Time                   `gorm:"index"`
+	UpdatedAt      time.Time                   `gorm:"index"`
+	DeletedAt      gorm.DeletedAt              `gorm:"index"`
+	UserID         int64                       `gorm:"index;not null;comment:用户ID"`
+	SourceURL      string                      `gorm:"size:2048;not null;comment:源商品URL"`
+	SourcePlatform string                      `gorm:"size:32;index;comment:来源平台"`
+	SourceItemID   string                      `gorm:"size:64;index;comment:来源商品ID"`
+	SourceData     datatypes.JSON              `gorm:"type:jsonb;comment:抓取的原始数据"`
+	ImageCount     int                         `gorm:"default:20;comment:生成图片数量"`
+	StyleHint      string                      `gorm:"size:255;comment:风格提示"`
+	ExtraPrompt    string                      `gorm:"type:text;comment:额外提示词"`
+	Status         string                      `gorm:"size:32;index;default:pending;comment:任务状态"`
+	AIStatus       string                      `gorm:"size:32;index;default:pending;comment:AI处理状态"`
+	AITextResult   datatypes.JSON              `gorm:"type:jsonb;comment:AI文案结果"`
+	AIImages       datatypes.JSONSlice[string] `gorm:"type:jsonb;comment:AI生成图片URL"`
+	AIErrorMessage string                      `gorm:"size:1024;comment:AI处理错误信息"`
 }
 
 func (*DraftTask) TableName() string {
@@ -119,28 +72,28 @@ func (*DraftTask) TableName() string {
 
 // DraftProduct 草稿商品
 type DraftProduct struct {
-	ID                int64          `gorm:"primaryKey;autoIncrement"`
-	CreatedAt         time.Time      `gorm:"index"`
-	UpdatedAt         time.Time      `gorm:"index"`
-	DeletedAt         gorm.DeletedAt `gorm:"index"`
-	TaskID            int64          `gorm:"index;not null;comment:任务ID"`
-	ShopID            int64          `gorm:"index;not null;comment:店铺ID"`
-	Title             string         `gorm:"size:140;comment:商品标题"`
-	Description       string         `gorm:"type:text;comment:商品描述"`
-	Tags              StringSlice    `gorm:"type:json;comment:标签"`
-	PriceAmount       int64          `gorm:"comment:价格(分)"`
-	PriceDivisor      int64          `gorm:"default:100;comment:价格除数"`
-	CurrencyCode      string         `gorm:"size:3;default:USD;comment:货币代码"`
-	Quantity          int            `gorm:"default:1;comment:库存数量"`
-	TaxonomyID        int64          `gorm:"comment:Etsy分类ID"`
-	ShippingProfileID int64          `gorm:"comment:运费模板ID"`
-	ReturnPolicyID    int64          `gorm:"comment:退货政策ID"`
-	SelectedImages    StringSlice    `gorm:"type:json;comment:选中的图片URL"`
-	Status            string         `gorm:"size:32;index;default:draft;comment:状态"`
-	SyncStatus        int            `gorm:"default:0;index;comment:同步状态"`
-	SyncError         string         `gorm:"size:1024;comment:同步错误信息"`
-	ProductID         int64          `gorm:"index;comment:同步后的产品ID"`
-	ListingID         int64          `gorm:"index;comment:Etsy listing ID"`
+	ID                int64                       `gorm:"primaryKey;autoIncrement"`
+	CreatedAt         time.Time                   `gorm:"index"`
+	UpdatedAt         time.Time                   `gorm:"index"`
+	DeletedAt         gorm.DeletedAt              `gorm:"index"`
+	TaskID            int64                       `gorm:"index;not null;comment:任务ID"`
+	ShopID            int64                       `gorm:"index;not null;comment:店铺ID"`
+	Title             string                      `gorm:"size:140;comment:商品标题"`
+	Description       string                      `gorm:"type:text;comment:商品描述"`
+	Tags              datatypes.JSONSlice[string] `gorm:"type:jsonb;comment:标签"`
+	PriceAmount       int64                       `gorm:"comment:价格(分)"`
+	PriceDivisor      int64                       `gorm:"default:100;comment:价格除数"`
+	CurrencyCode      string                      `gorm:"size:3;default:USD;comment:货币代码"`
+	Quantity          int                         `gorm:"default:1;comment:库存数量"`
+	TaxonomyID        int64                       `gorm:"comment:Etsy分类ID"`
+	ShippingProfileID int64                       `gorm:"comment:运费模板ID"`
+	ReturnPolicyID    int64                       `gorm:"comment:退货政策ID"`
+	SelectedImages    datatypes.JSONSlice[string] `gorm:"type:jsonb;comment:选中的图片URL"`
+	Status            string                      `gorm:"size:32;index;default:draft;comment:状态"`
+	SyncStatus        int                         `gorm:"default:0;index;comment:同步状态"`
+	SyncError         string                      `gorm:"size:1024;comment:同步错误信息"`
+	ProductID         int64                       `gorm:"index;comment:同步后的产品ID"`
+	ListingID         int64                       `gorm:"index;comment:Etsy listing ID"`
 
 	// 关联
 	Task *DraftTask `gorm:"foreignKey:TaskID"`

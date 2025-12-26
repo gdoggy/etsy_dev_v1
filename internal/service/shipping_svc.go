@@ -19,20 +19,20 @@ import (
 )
 
 type ShippingProfileService struct {
-	profileRepo     *repository.ShippingProfileRepo
-	destinationRepo *repository.ShippingDestinationRepo
-	upgradeRepo     *repository.ShippingUpgradeRepo
-	shopRepo        *repository.ShopRepo
-	developerRepo   *repository.DeveloperRepo
+	profileRepo     repository.ShippingProfileRepository
+	destinationRepo repository.ShippingDestinationRepository
+	upgradeRepo     repository.ShippingUpgradeRepository
+	shopRepo        repository.ShopRepository
+	developerRepo   repository.DeveloperRepository
 	dispatcher      net.Dispatcher
 }
 
 func NewShippingProfileService(
-	profileRepo *repository.ShippingProfileRepo,
-	destinationRepo *repository.ShippingDestinationRepo,
-	upgradeRepo *repository.ShippingUpgradeRepo,
-	shopRepo *repository.ShopRepo,
-	developerRepo *repository.DeveloperRepo,
+	profileRepo repository.ShippingProfileRepository,
+	destinationRepo repository.ShippingDestinationRepository,
+	upgradeRepo repository.ShippingUpgradeRepository,
+	shopRepo repository.ShopRepository,
+	developerRepo repository.DeveloperRepository,
 	dispatcher net.Dispatcher,
 ) *ShippingProfileService {
 	return &ShippingProfileService{
@@ -894,16 +894,16 @@ func (s *ShippingProfileService) convertUpgradeToResp(upgrade *model.ShippingUpg
 // ============  退货逻辑 =============
 
 type ReturnPolicyService struct {
-	policyRepo    *repository.ReturnPolicyRepo
-	shopRepo      *repository.ShopRepo
-	developerRepo *repository.DeveloperRepo
+	policyRepo    repository.ReturnPolicyRepository
+	shopRepo      repository.ShopRepository
+	developerRepo repository.DeveloperRepository
 	dispatcher    net.Dispatcher
 }
 
 func NewReturnPolicyService(
-	policyRepo *repository.ReturnPolicyRepo,
-	shopRepo *repository.ShopRepo,
-	developerRepo *repository.DeveloperRepo,
+	policyRepo repository.ReturnPolicyRepository,
+	shopRepo repository.ShopRepository,
+	developerRepo repository.DeveloperRepository,
 	dispatcher net.Dispatcher,
 ) *ReturnPolicyService {
 	return &ReturnPolicyService{
