@@ -210,7 +210,7 @@ func (c *OrderController) GetStats(ctx *gin.Context) {
 // GetShipment 获取订单的发货信息
 // GET /api/orders/:order_id/shipment
 func (c *OrderController) GetShipment(ctx *gin.Context) {
-	orderID, err := strconv.ParseInt(ctx.Param("order_id"), 10, 64)
+	orderID, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "无效的订单ID"})
 		return

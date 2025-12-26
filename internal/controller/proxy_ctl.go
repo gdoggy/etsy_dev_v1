@@ -106,7 +106,7 @@ func (h *ProxyController) GetList(c *gin.Context) {
 	status, _ := strconv.Atoi(c.Query("status"))
 	capacity, _ := strconv.Atoi(c.Query("capacity"))
 
-	filter := repository.ProxyListFilter{
+	filter := repository.ProxyFilter{
 		Page:     page,
 		PageSize: pageSize,
 		IP:       c.Query("ip"),

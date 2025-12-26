@@ -251,7 +251,7 @@ func registerOrderRoutes(api *gin.RouterGroup, ctl *controller.OrderController) 
 		orders.GET("/stats", ctl.GetStats)
 
 		// 订单下的发货信息
-		orders.GET("/:order_id/shipment", ctl.GetShipment)
+		orders.GET("/:id/shipment", ctl.GetShipment)
 	}
 }
 
