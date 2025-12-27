@@ -24,7 +24,7 @@ type DeveloperRepository interface {
 	// 查询
 	FindByApiKey(ctx context.Context, apiKey string) (*model.Developer, error)
 	FindByCallbackURL(ctx context.Context, callbackURL string) (*model.Developer, error)
-	FindBestByRegion(ctx context.Context, region string) (*model.Developer, error)
+	FindBestDev(ctx context.Context) (*model.Developer, error)
 
 	// 关联操作
 	UnbindShops(ctx context.Context, developerID int64) error
@@ -151,17 +151,17 @@ func (r *developerRepo) FindByCallbackURL(ctx context.Context, callbackURL strin
 	return &dev, nil
 }
 
-func (r *developerRepo) FindBestByRegion(ctx context.Context, region string) (*model.Developer, error) {
+func (r *developerRepo) FindBestDev(ctx context.Context) (*model.Developer, error) {
 	var dev model.Developer
 	err := r.db.WithContext(ctx).
 		Table("developers").
 		Select("developers.*").
 		Joins("LEFT JOIN shops ON shops.developer_id = developers.id").
-		Where("shops.region = ? AND developers.status = ?", region, 1).
+		Where("developers.status != ?", model.DeveloperStatusBanned).
 		Group("developers.id").
 		Having("COUNT(developers.id) < ?", 2).
 		Order("COUNT(developers.id) ASC").
-		First(&dev).Error
+		Take(&dev).Error
 	if err != nil {
 		return nil, err
 	}

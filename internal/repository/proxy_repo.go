@@ -66,9 +66,6 @@ func (r *proxyRepo) GetByID(ctx context.Context, id int64) (*model.Proxy, error)
 		Preload("Shops", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id", "proxy_id", "shop_name", "etsy_shop_id", "token_status")
 		}).
-		Preload("Developers", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "proxy_id", "name", "api_key")
-		}).
 		First(&proxy, id).Error
 	if err != nil {
 		return nil, err
@@ -126,9 +123,6 @@ func (r *proxyRepo) List(ctx context.Context, filter ProxyFilter) ([]model.Proxy
 		Preload("Shops", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id", "proxy_id", "shop_name", "etsy_shop_id", "token_status")
 		}).
-		Preload("Developers", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "proxy_id", "name", "api_key")
-		}).
 		Order("id DESC").
 		Limit(filter.PageSize).
 		Offset(offset).
@@ -169,7 +163,7 @@ func (r *proxyRepo) FindSpareProxy(ctx context.Context, region string) (*model.P
 		Table("proxies").
 		Select("proxies.*").
 		Joins("LEFT JOIN shops ON shops.proxy_id = proxies.id").
-		Where("proxies.region = ? AND proxies.status = ?", region, 1).
+		Where("proxies.region = ? AND proxies.status = ? AND proxies.Capacity = ?", region, model.PROXY_STATUS_ACTIVE, model.PROXY_SHARED).
 		Group("proxies.id").
 		Having("COUNT(shops.id) < ?", 2).
 		Order("COUNT(shops.id) ASC").

@@ -80,7 +80,8 @@ func (m *ProxyMonitor) Execute(ctx context.Context) {
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, m.concurrencyLimit)
 
-	for _, p := range proxies {
+	for i := range proxies {
+		proxy := proxies[i]
 		select {
 		case <-ctx.Done():
 			log.Println("[ProxyMonitor] Task context timeout, stopping...")
@@ -100,7 +101,7 @@ func (m *ProxyMonitor) Execute(ctx context.Context) {
 				// 这里的 err 通常是数据库层面的严重错误，需记录
 				log.Printf("[Task] Logic error for proxy %s: %v", proxy.IP, err)
 			}
-		}(p)
+		}(proxy)
 
 	}
 

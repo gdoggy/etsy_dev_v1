@@ -25,7 +25,7 @@ func NewProxyController(proxyService *service.ProxyService) *ProxyController {
 
 // Create 创建代理
 // @Summary 创建代理 IP
-// @Description 录入新的代理 IP，需保证 IP+Port 唯一
+// @Description 录入新的代理 IP，需保证 IP+Port 唯一，region 必填国家代码
 // @Tags Proxy
 // @Accept json
 // @Produce json

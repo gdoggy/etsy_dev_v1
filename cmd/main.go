@@ -3,14 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"etsy_dev_v1_202512/internal/controller"
-	"etsy_dev_v1_202512/internal/model"
-	"etsy_dev_v1_202512/internal/repository"
-	"etsy_dev_v1_202512/internal/router"
-	"etsy_dev_v1_202512/internal/service"
-	"etsy_dev_v1_202512/internal/task"
-	"etsy_dev_v1_202512/pkg/database"
-	"etsy_dev_v1_202512/pkg/net"
 	"log"
 	"net/http"
 	"os"
@@ -20,23 +12,32 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+
+	"etsy_dev_v1_202512/internal/controller"
+	"etsy_dev_v1_202512/internal/repository"
+	"etsy_dev_v1_202512/internal/router"
+	"etsy_dev_v1_202512/internal/service"
+	"etsy_dev_v1_202512/internal/task"
+	"etsy_dev_v1_202512/pkg/database"
+	"etsy_dev_v1_202512/pkg/net"
 )
 
 func main() {
 	// 1. 初始化数据库
-	db := initDatabase()
+	db := database.InitDatabase()
 
 	// 2. 初始化依赖
 	deps := initDependencies(db)
 
-	// 3. 启动定时任务
-	initTasks(deps)
+	// 4. 启动业务同步任务
+	startInfraTasks(deps)
+	deps.TaskManager.Start()
 
 	// 4. 初始化路由
 	r := router.SetupRouter(deps.Controllers)
 
 	// 5. 启动服务
-	startServer(r)
+	startServer(r, deps.TaskManager)
 }
 
 // ==================== 依赖容器 ====================
@@ -48,10 +49,13 @@ type Dependencies struct {
 	Dispatcher  net.Dispatcher
 	Controllers *router.Controllers
 	Services    *Services
+	TaskManager *task.TaskManager
 }
 
 // Repositories 仓库集合
 type Repositories struct {
+	User            repository.UserRepository
+	ShopMember      repository.ShopMemberRepository
 	Proxy           repository.ProxyRepository
 	Developer       repository.DeveloperRepository
 	Shop            repository.ShopRepository
@@ -74,6 +78,7 @@ type Repositories struct {
 
 // Services 服务集合
 type Services struct {
+	User         *service.UserService
 	Proxy        *service.ProxyService
 	Developer    *service.DeveloperService
 	Auth         *service.AuthService
@@ -91,30 +96,6 @@ type Services struct {
 }
 
 // ==================== 初始化函数 ====================
-
-// initDatabase 初始化数据库
-func initDatabase() *gorm.DB {
-	return database.InitDB(
-		// Manager
-		&model.SysUser{}, &model.ShopMember{},
-		// Account
-		&model.Proxy{}, &model.Developer{}, &model.DomainPool{},
-		// Shop
-		&model.Shop{}, &model.ShopAccount{}, &model.ShopSection{},
-		// Shipping
-		&model.ShippingProfile{}, &model.ShippingDestination{}, &model.ShippingUpgrade{},
-		// Policy
-		&model.ReturnPolicy{},
-		// Product
-		&model.Product{}, &model.ProductImage{}, &model.ProductVariant{},
-		// Draft
-		&model.DraftTask{}, &model.DraftProduct{}, &model.DraftImage{},
-		// Order
-		&model.Order{}, &model.OrderItem{},
-		// Shipment
-		&model.Shipment{}, &model.TrackingEvent{},
-	)
-}
 
 // initDependencies 初始化所有依赖
 func initDependencies(db *gorm.DB) *Dependencies {
@@ -135,6 +116,7 @@ func initDependencies(db *gorm.DB) *Dependencies {
 		APIKey:    getEnv("ONEBOUND_API_KEY", ""),
 		APISecret: getEnv("ONEBOUND_API_SECRET", ""),
 	})
+
 	// -------- Karrio 客户端 --------
 	karrioClient := initKarrioClient()
 
@@ -147,6 +129,7 @@ func initDependencies(db *gorm.DB) *Dependencies {
 		Karrio:   karrioClient,
 	}
 
+	services.User = service.NewUserService(repos.User)
 	services.Developer = service.NewDeveloperService(repos.Developer, repos.Shop, dispatcher)
 	services.Shipping = service.NewShippingProfileService(
 		repos.ShippingProfile, repos.ShippingDest, repos.ShippingUpgrade,
@@ -158,7 +141,7 @@ func initDependencies(db *gorm.DB) *Dependencies {
 	services.Shop = service.NewShopService(
 		repos.Shop, repos.ShopSection,
 		repos.ShippingProfile, repos.ShippingDest, repos.ShippingUpgrade,
-		repos.ReturnPolicy, repos.Developer, dispatcher,
+		repos.ReturnPolicy, repos.Developer, dispatcher, repos.Proxy,
 	)
 	services.Auth = service.NewAuthService(services.Shop, dispatcher)
 	services.Product = service.NewProductService(repos.Product, repos.Shop, aiSvc, storageSvc, dispatcher)
@@ -171,8 +154,10 @@ func initDependencies(db *gorm.DB) *Dependencies {
 		karrioClient, nil, // EtsyShipmentSyncer 可后续实现
 	)
 
+	// -------- TaskManager（业务同步任务）--------
+	taskManager := initTaskManager(repos, services)
 	// -------- Controller 层 --------
-	controllers := initControllers(services)
+	controllers := initControllers(services, taskManager)
 
 	return &Dependencies{
 		DB:          db,
@@ -180,12 +165,15 @@ func initDependencies(db *gorm.DB) *Dependencies {
 		Dispatcher:  dispatcher,
 		Controllers: controllers,
 		Services:    services,
+		TaskManager: taskManager,
 	}
 }
 
 // initRepositories 初始化所有仓库
 func initRepositories(db *gorm.DB) *Repositories {
 	return &Repositories{
+		User:            repository.NewUserRepository(db),
+		ShopMember:      repository.NewShopMemberRepository(db),
 		Proxy:           repository.NewProxyRepository(db),
 		Developer:       repository.NewDeveloperRepository(db),
 		Shop:            repository.NewShopRepository(db),
@@ -211,11 +199,12 @@ func initRepositories(db *gorm.DB) *Repositories {
 func initStorageService() *service.StorageService {
 	storageSvc, err := service.NewStorageService(&service.StorageConfig{
 		Provider:  getEnv("STORAGE_PROVIDER", "s3"),
-		Bucket:    getEnv("AWS_BUCKET", ""),
-		Region:    getEnv("AWS_REGION", ""),
-		AccessKey: getEnv("AWS_ACCESS_KEY_ID", ""),
-		SecretKey: getEnv("AWS_SECRET_ACCESS_KEY", ""),
-		CDNDomain: getEnv("AWS_CDN_DOMAIN", ""),
+		Endpoint:  getEnv("STORAGE_ENDPOINT", "https://s3.amazonaws.com"),
+		Region:    getEnv("STORAGE_REGION", ""),
+		AccessKey: getEnv("STORAGE_ACCESS_KEY", ""),
+		SecretKey: getEnv("STORAGE_SECRET_KEY", ""),
+		Bucket:    getEnv("STORAGE_BUCKET", ""),
+		CDNDomain: getEnv("STORAGE_CDN_DOMAIN", ""),
 		BasePath:  getEnv("STORAGE_BASE_PATH", "etsy-erp"),
 	})
 	if err != nil {
@@ -243,8 +232,9 @@ func initKarrioClient() *service.KarrioClient {
 }
 
 // initControllers 初始化所有控制器
-func initControllers(svc *Services) *router.Controllers {
+func initControllers(svc *Services, taskManager *task.TaskManager) *router.Controllers {
 	return &router.Controllers{
+		User:         controller.NewUserController(svc.User),
 		Proxy:        controller.NewProxyController(svc.Proxy),
 		Developer:    controller.NewDeveloperController(svc.Developer),
 		Auth:         controller.NewAuthController(svc.Auth),
@@ -256,28 +246,78 @@ func initControllers(svc *Services) *router.Controllers {
 		Order:        controller.NewOrderController(svc.Order),
 		Shipment:     controller.NewShipmentController(svc.Shipment),
 		Karrio:       controller.NewKarrioController(svc.Karrio),
+		Sync:         controller.NewSyncController(taskManager),
 	}
 }
 
 // ==================== 定时任务 ====================
+// initTaskManager 创建业务同步任务管理器
+func initTaskManager(repos *Repositories, services *Services) *task.TaskManager {
+	return task.NewTaskManager(
+		&task.TaskManagerDeps{
+			// Repositories
+			ShopRepo:     repos.Shop,
+			ShipmentRepo: repos.Shipment,
 
-// initTasks 初始化定时任务
-func initTasks(deps *Dependencies) {
-	// 代理监控
+			// Services
+			ShopService:     services.Shop,
+			ProfileService:  services.Shipping,
+			PolicyService:   services.ReturnPolicy,
+			ProductService:  services.Product,
+			OrderService:    services.Order,
+			ShipmentService: services.Shipment,
+		},
+		&task.TaskManagerConfig{
+			// Shop 同步
+			ShopEnabled:     true,
+			ShopConcurrency: 5,
+			ShopSyncProfile: true,
+			ShopSyncPolicy:  true,
+			ShopSyncSection: true,
+
+			// Product 同步
+			ProductEnabled:     true,
+			ProductConcurrency: 3,
+			ProductBatchSize:   100,
+
+			// Order 同步
+			OrderEnabled:     true,
+			OrderConcurrency: 10,
+
+			// Tracking 同步
+			TrackingEnabled:     services.Shipment != nil,
+			TrackingConcurrency: 20,
+		},
+	)
+}
+
+// startInfraTasks 启动基础设施层任务
+func startInfraTasks(deps *Dependencies) {
+	// 1. 分区维护任务
+	if init := database.Global(); init != nil {
+		partitionTask := database.NewPartitionTask(
+			init.GetManager(),
+			database.WithFutureMonths(6),
+			database.WithInterval(100*24*time.Hour),
+		)
+		partitionTask.Start()
+	}
+
+	// 2. 代理监控任务
 	proxyMonitor := task.NewProxyMonitor(
 		deps.Services.Proxy.ProxyRepo,
 		deps.Services.Proxy,
 	)
 	proxyMonitor.Start()
 
-	// Token 刷新
+	// 3. Token 刷新任务（其他任务依赖有效 Token）
 	tokenTask := task.NewTokenTask(
 		deps.Repos.Shop,
 		deps.Services.Auth,
 	)
 	tokenTask.Start()
 
-	// 草稿清理
+	// 4. 草稿清理任务
 	if deps.Services.Storage != nil {
 		cleanupTask := task.NewDraftCleanupTask(
 			deps.Repos.DraftTask,
@@ -288,29 +328,13 @@ func initTasks(deps *Dependencies) {
 		cleanupTask.Start()
 	}
 
-	// 订单同步任务
-	if deps.Services.Order != nil {
-		orderSyncTask := task.NewOrderSyncTask(
-			deps.Services.Order,
-			deps.Repos.Shop,
-		)
-		orderSyncTask.Start()
-	}
-
-	// 物流跟踪同步任务
-	if deps.Services.Shipment != nil {
-		// ShipmentService 实现了 ShipmentTracker interface
-		trackingSyncTask := task.NewTrackingSyncTask(deps.Repos.Shipment, deps.Services.Shipment)
-		trackingSyncTask.Start()
-	}
-
-	log.Println("定时任务已启动")
+	log.Println("[Tasks] 基础设施层任务已启动")
 }
 
 // ==================== 服务启动 ====================
 
 // startServer 启动服务
-func startServer(r *gin.Engine) {
+func startServer(r *gin.Engine, taskManager *task.TaskManager) {
 	port := getEnv("SERVER_PORT", "8080")
 
 	srv := &http.Server{
@@ -333,7 +357,12 @@ func startServer(r *gin.Engine) {
 
 	log.Println("正在关闭服务...")
 
-	// 优雅关闭，最多等待 10 秒
+	// 停止业务同步任务
+	if taskManager != nil {
+		taskManager.Stop()
+	}
+
+	// 优雅关闭 HTTP 服务，最多等待 30 秒
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

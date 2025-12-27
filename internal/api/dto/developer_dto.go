@@ -7,9 +7,9 @@ import "time"
 // CreateDeveloperReq 创建开发者账号请求
 type CreateDeveloperReq struct {
 	// 基础信息
-	Name       string `json:"name" binding:"required,max=50"`       // 备注名称
-	LoginEmail string `json:"login_email" binding:"required,email"` // 登录邮箱
-	LoginPwd   string `json:"login_pwd" binding:"required,min=6"`   // 登录密码
+	Name       string `json:"name" binding:"omitempty,max=50"`       // 备注名称
+	LoginEmail string `json:"login_email" binding:"omitempty,email"` // 登录邮箱
+	LoginPwd   string `json:"login_pwd" binding:"omitempty"`         // 登录密码
 
 	// API 凭证
 	ApiKey       string `json:"api_key" binding:"required"`       // Keystring
@@ -18,9 +18,12 @@ type CreateDeveloperReq struct {
 
 // UpdateDeveloperReq 更新开发者账号请求 (仅允许修改备注与密码/密钥)
 type UpdateDeveloperReq struct {
-	Name         string `json:"name" binding:"max=50"`
-	LoginPwd     string `json:"login_pwd" binding:"omitempty,min=6"` // 留空则不修改
-	SharedSecret string `json:"shared_secret" binding:"omitempty"`   // 留空则不修改
+	Name       string `json:"name" binding:"omitempty,max=50"`       // 备注名称
+	LoginEmail string `json:"login_email" binding:"omitempty,email"` // 登录邮箱
+	LoginPwd   string `json:"login_pwd" binding:"omitempty"`         // 登录密码
+	// API 凭证
+	ApiKey       string `json:"api_key" binding:"omitempty"`       // Keystring
+	SharedSecret string `json:"shared_secret" binding:"omitempty"` // Shared Secret
 }
 
 // UpdateDevStatusReq 状态变更请求 (如手动停用)

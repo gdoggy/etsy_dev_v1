@@ -49,7 +49,6 @@ func (s *ProxyService) CreateProxy(ctx context.Context, req dto.CreateProxyReq, 
 		Password: req.Password,
 		Protocol: req.Protocol,
 		Region:   req.Region,
-		Capacity: req.Capacity,
 		Status:   1,    // 默认正常
 		IsActive: true, // 默认启用
 	}
@@ -88,9 +87,6 @@ func (s *ProxyService) UpdateProxy(ctx context.Context, req dto.UpdateProxyReq, 
 	}
 	if req.Region != "" {
 		proxy.Region = req.Region
-	}
-	if req.Capacity > 0 {
-		proxy.Capacity = req.Capacity
 	}
 	if req.Status > 0 {
 		proxy.Status = req.Status
@@ -188,20 +184,15 @@ func (s *ProxyService) VerifyAndHeal(ctx context.Context, proxy *model.Proxy) er
 	isAlive := s.TestConnectivity(proxy)
 	var err error
 	if isAlive {
-		if proxy.FailureCount > 0 || proxy.Status != 1 {
+		if proxy.FailureCount > 0 || proxy.Status != model.PROXY_STATUS_ACTIVE {
 			proxy.FailureCount = 0
-			proxy.Status = 1
+			proxy.Status = model.PROXY_STATUS_ACTIVE
 			err = s.ProxyRepo.UpdateStatusAndCount(ctx, proxy)
 			if err != nil {
 				log.Printf("[ProxyMonitor] Failed to update proxy status: %v\n", err)
 			}
-		} else {
-			err = s.ProxyRepo.UpdateLastCheckTime(ctx, proxy.ID)
-			if err != nil {
-				log.Printf("[ProxyMonitor] Failed to update last proxy check time: %v\n", err)
-			}
 		}
-		return err
+		return s.ProxyRepo.UpdateLastCheckTime(ctx, proxy.ID)
 	}
 
 	// B2. 异常：进入故障处理流程
@@ -210,10 +201,11 @@ func (s *ProxyService) VerifyAndHeal(ctx context.Context, proxy *model.Proxy) er
 
 	// 判定是否“彻底报废”
 	if proxy.FailureCount >= s.maxFailCount {
-		proxy.Status = 3 // Dead/Banned
+		proxy.Status = model.PROXY_STATUS_DEAD // Dead/Banned
 		log.Printf("Proxy %s is DEAD (Max fail count reached).", proxy.IP)
 	} else {
-		proxy.Status = 2 // Unstable
+		proxy.Status = model.PROXY_STATUS_FAILED // Unstable
+		log.Printf("Proxy %s is FAILED (%d fail count reached).", proxy.IP, proxy.FailureCount)
 	}
 
 	// 更新状态到数据库
@@ -222,6 +214,7 @@ func (s *ProxyService) VerifyAndHeal(ctx context.Context, proxy *model.Proxy) er
 		return err
 	}
 
+	_ = s.ProxyRepo.UpdateLastCheckTime(ctx, proxy.ID)
 	// 触发迁移：只有当状态变为不可用时，才需要把店移走
 	// 如果它已经是 Status=2 且店都被移走了，这里其实查出来是空列表，不耗性能
 	return s.MigrateShops(ctx, proxy)
@@ -262,7 +255,11 @@ func (s *ProxyService) MigrateShops(ctx context.Context, deadProxy *model.Proxy)
 // TestConnectivity 真实的连通性测试
 // 作用：执行一次物理连接测试
 func (s *ProxyService) TestConnectivity(proxy *model.Proxy) bool {
-	proxyURL, _ := url.Parse(fmt.Sprintf("%s://%s:%s", proxy.Protocol, proxy.IP, proxy.Port))
+	proxyURL, err := url.Parse(fmt.Sprintf("%s://%s:%s", proxy.Protocol, proxy.IP, proxy.Port))
+	if err != nil {
+		log.Printf("[ProxyMonitor] Failed to parse proxy URL: %v\n", err)
+		return false
+	}
 	if proxy.Username != "" {
 		proxyURL.User = url.UserPassword(proxy.Username, proxy.Password)
 	}

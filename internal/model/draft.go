@@ -10,12 +10,13 @@ import (
 
 const (
 	// 任务状态
-	TaskStatusPending    = "pending"
-	TaskStatusProcessing = "processing"
-	TaskStatusDraft      = "draft"
-	TaskStatusConfirmed  = "confirmed"
-	TaskStatusExpired    = "expired"
-	TaskStatusFailed     = "failed"
+	TaskStatusPending    = "pending"    // 待提交
+	TaskStatusProcessing = "processing" // 处理中
+	TaskStatusDraft      = "draft"      // 草稿
+	TaskStatusConfirmed  = "confirmed"  // 已确认
+	TaskStatusSubmitted  = "submitted"  // 已提交
+	TaskStatusExpired    = "expired"    // 已过期
+	TaskStatusFailed     = "failed"     // 已失败
 
 	// AI 状态
 	AIStatusPending    = "pending"
@@ -27,7 +28,7 @@ const (
 	DraftStatusDraft     = "draft"
 	DraftStatusConfirmed = "confirmed"
 	DraftStatusSubmitted = "submitted"
-	DraftStatusFailed    = "failed"
+	DraftStatusExpired   = "expired"
 
 	// 同步状态
 	DraftSyncStatusNone    = 0 // 未同步

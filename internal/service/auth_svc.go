@@ -45,15 +45,12 @@ func (s *AuthService) GenerateLoginURL(ctx context.Context, shopID int64, region
 	var shop model.Shop
 	var err error
 	if shopID == 0 {
-		// 初次授权
-		if region == "" {
-			return "", fmt.Errorf("no shop region")
-		}
 		shop.Region = region
-		if err = s.ShopService.CreateShop(ctx, &shop); err != nil {
+		newShop, err := s.ShopService.CreateShop(ctx, &shop)
+		if err != nil {
 			return "", err
 		}
-		shopID = shop.ID
+		shop = *newShop
 	} else {
 		existingShop, err := s.ShopService.shopRepo.GetByID(ctx, shopID)
 		if err != nil {
@@ -62,13 +59,16 @@ func (s *AuthService) GenerateLoginURL(ctx context.Context, shopID int64, region
 		shop = *existingShop
 	}
 
-	// 2. 严格校验，绑定开发者账号
+	// 2. 严格校验，绑定开发者账号 todo 新建店铺只是存了，没有查出来店铺关联关系，导致 shop.developer可能为空
 	if shop.DeveloperID == 0 || shop.Developer.ID == 0 {
-		shop.Developer, err = s.ShopService.developerRepo.FindBestByRegion(ctx, shop.Region)
+		dev, err := s.ShopService.developerRepo.FindBestDev(ctx)
 		if err != nil {
 			return "", err
 		}
-		err = s.ShopService.shopRepo.UpdateFields(ctx, shop.ID, map[string]interface{}{"developer_id": shop.Developer.ID})
+		shop.Developer = dev
+		if err := s.ShopService.shopRepo.UpdateFields(ctx, shop.ID, map[string]interface{}{"developer_id": dev.ID}); err != nil {
+			return "", err
+		}
 	}
 
 	// 3. 生成 PKCE 安全参数
@@ -92,12 +92,12 @@ func (s *AuthService) GenerateLoginURL(ctx context.Context, shopID int64, region
 		     &code_challenge=DSWlW2Abh-cf8CeLL8-g3hQ2WQyYdKyiu83u_s7nRhI
 		     &code_challenge_method=S256
 	*/
-	// callback url 需要更新为 shop.Developer.CallbackURL
+	// todo 正式环境需要更新 callback url 需要更新为 shop.Developer.CallbackURL
 	authURL := fmt.Sprintf(
 		"https://www.etsy.com/oauth/connect?response_type=code&client_id=%s&redirect_uri=%s&scope=%s&state=%s&code_challenge=%s&code_challenge_method=S256",
 		shop.Developer.ApiKey, CallbackURL, scopes, state, challenge,
 	)
-	return authURL, nil
+	return authURL, err
 }
 
 // HandleCallback 处理 Etsy 回调 -> 换 Token
@@ -130,7 +130,7 @@ func (s *AuthService) HandleCallback(ctx context.Context, code, state string) (*
 	data := url.Values{}
 	data.Set("grant_type", "authorization_code")
 	data.Set("client_id", shop.Developer.ApiKey)
-	//data.Set("redirect_uri", shop.Developer.CallbackURL)
+	// todo 正式环境修改为 data.Set("redirect_uri", shop.Developer.CallbackURL)
 	data.Set("redirect_uri", CallbackURL)
 	data.Set("code", code)
 	data.Set("code_verifier", verifier)
@@ -161,7 +161,8 @@ func (s *AuthService) HandleCallback(ctx context.Context, code, state string) (*
 	shop.AccessToken = etsyResp.AccessToken
 	shop.RefreshToken = etsyResp.RefreshToken
 	shop.TokenExpiresAt = time.Now().Add(time.Duration(etsyResp.ExpiresIn) * time.Second)
-	shop.TokenStatus = model.ShopTokenStatusExpired
+	shop.TokenStatus = model.ShopTokenStatusValid
+	shop.Status = model.ShopStatusActive
 	// 入库保存
 	if err = s.ShopService.shopRepo.Update(ctx, shop); err != nil {
 		return shop, fmt.Errorf("店铺入库失败: %v", err)

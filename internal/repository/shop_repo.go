@@ -19,18 +19,21 @@ type ShopRepository interface {
 	Update(ctx context.Context, shop *model.Shop) error
 	UpdateFields(ctx context.Context, id int64, fields map[string]interface{}) error
 	Delete(ctx context.Context, id int64) error
+
+	// 列表查询
 	List(ctx context.Context, filter ShopFilter) ([]model.Shop, int64, error)
+	ListByStatus(ctx context.Context, status int) ([]model.Shop, error)
+	ListByUserID(ctx context.Context, userID int64) ([]model.Shop, error)
+	ListActiveShops(ctx context.Context) ([]model.Shop, error)
 
 	// Proxy 相关
 	GetByProxyID(ctx context.Context, proxyID int64) ([]model.Shop, error)
 
-	// Token 相关
+	// 状态相关
+	UpdateStatus(ctx context.Context, id int64, status int) error
+	UpdateTokenStatus(ctx context.Context, id int64, tokenStatus string) error
 	FindExpiringShops(ctx context.Context) ([]model.Shop, error)
 	UpdateToken(ctx context.Context, id int64, accessToken, refreshToken string, expiresAt int64) error
-
-	// 活跃店铺
-	ListActiveShops(ctx context.Context) ([]*model.Shop, error)
-
 	// 开发者关联
 	GetDeveloperByShopID(ctx context.Context, shopID int64) (*model.Developer, error)
 }
@@ -67,7 +70,9 @@ func (r *shopRepo) Create(ctx context.Context, shop *model.Shop) error {
 
 func (r *shopRepo) GetByID(ctx context.Context, id int64) (*model.Shop, error) {
 	var shop model.Shop
-	if err := r.db.WithContext(ctx).First(&shop, id).Error; err != nil {
+	if err := r.db.WithContext(ctx).
+		Preload("Developer").
+		First(&shop, id).Error; err != nil {
 		return nil, err
 	}
 	return &shop, nil
@@ -154,6 +159,24 @@ func (r *shopRepo) List(ctx context.Context, filter ShopFilter) ([]model.Shop, i
 	return shops, total, nil
 }
 
+func (r *shopRepo) ListByStatus(ctx context.Context, status int) ([]model.Shop, error) {
+	var shops []model.Shop
+	err := r.db.WithContext(ctx).
+		Model(&model.Shop{}).
+		Where("status = ?", status).
+		Find(&shops).Error
+	return shops, err
+}
+
+func (r *shopRepo) ListByUserID(ctx context.Context, userID int64) ([]model.Shop, error) {
+	var shops []model.Shop
+	err := r.db.WithContext(ctx).
+		Model(&model.Shop{}).
+		Joins("JOIN shop_members ON shop_members.shop_id = shops.id").
+		Where("shop_members.user_id = ?", userID).
+		Find(&shops).Error
+	return shops, err
+}
 func (r *shopRepo) GetByProxyID(ctx context.Context, proxyID int64) ([]model.Shop, error) {
 	var shops []model.Shop
 	err := r.db.WithContext(ctx).
@@ -169,9 +192,24 @@ func (r *shopRepo) FindExpiringShops(ctx context.Context) ([]model.Shop, error) 
 	// Token 状态为活跃，且 Token 即将过期（30分钟内）
 	err := r.db.WithContext(ctx).
 		Model(&model.Shop{}).
+		Preload("Developer").
 		Where("token_status = ?", model.ShopTokenStatusValid).
 		Find(&shops).Error
 	return shops, err
+}
+
+func (r *shopRepo) UpdateStatus(ctx context.Context, id int64, status int) error {
+	return r.db.WithContext(ctx).
+		Model(&model.Shop{}).
+		Where("id = ?", id).
+		Update("status", status).Error
+}
+
+func (r *shopRepo) UpdateTokenStatus(ctx context.Context, id int64, tokenStatus string) error {
+	return r.db.WithContext(ctx).
+		Model(&model.Shop{}).
+		Where("id = ?", id).
+		Update("token_status", tokenStatus).Error
 }
 
 // UpdateToken 更新 Token
@@ -188,8 +226,8 @@ func (r *shopRepo) UpdateToken(ctx context.Context, id int64, accessToken, refre
 }
 
 // ListActiveShops 获取所有活跃店铺
-func (r *shopRepo) ListActiveShops(ctx context.Context) ([]*model.Shop, error) {
-	var shops []*model.Shop
+func (r *shopRepo) ListActiveShops(ctx context.Context) ([]model.Shop, error) {
+	var shops []model.Shop
 	err := r.db.WithContext(ctx).
 		Where("token_status = ?", model.ShopTokenStatusValid).
 		Find(&shops).Error
@@ -218,4 +256,88 @@ func (r *shopRepo) GetWithDeveloper(ctx context.Context, id int64) (*model.Shop,
 		return nil, err
 	}
 	return &shop, nil
+}
+
+// ==================== ShopMemberRepository ====================
+
+// ShopMemberRepository 店铺成员仓库接口
+type ShopMemberRepository interface {
+	Create(ctx context.Context, member *model.ShopMember) error
+	GetByUserAndShop(ctx context.Context, userID, shopID int64) (*model.ShopMember, error)
+	ListByUser(ctx context.Context, userID int64) ([]model.ShopMember, error)
+	ListByShop(ctx context.Context, shopID int64) ([]model.ShopMember, error)
+	Delete(ctx context.Context, userID, shopID int64) error
+	HasAccess(ctx context.Context, userID, shopID int64) (bool, error)
+	GetUserShopIDs(ctx context.Context, userID int64) ([]int64, error)
+}
+
+type shopMemberRepository struct {
+	db *gorm.DB
+}
+
+// NewShopMemberRepository 创建店铺成员仓库
+func NewShopMemberRepository(db *gorm.DB) ShopMemberRepository {
+	return &shopMemberRepository{db: db}
+}
+
+// Create 创建成员关联
+func (r *shopMemberRepository) Create(ctx context.Context, member *model.ShopMember) error {
+	return r.db.WithContext(ctx).Create(member).Error
+}
+
+// GetByUserAndShop 获取用户店铺关联
+func (r *shopMemberRepository) GetByUserAndShop(ctx context.Context, userID, shopID int64) (*model.ShopMember, error) {
+	var member model.ShopMember
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND shop_id = ?", userID, shopID).
+		First(&member).Error
+	if err != nil {
+		return nil, err
+	}
+	return &member, err
+}
+
+// ListByUser 获取用户的所有店铺
+func (r *shopMemberRepository) ListByUser(ctx context.Context, userID int64) ([]model.ShopMember, error) {
+	var members []model.ShopMember
+	err := r.db.WithContext(ctx).
+		Preload("Shop").
+		Where("user_id = ?", userID).
+		Find(&members).Error
+	return members, err
+}
+
+// ListByShop 获取店铺的所有成员
+func (r *shopMemberRepository) ListByShop(ctx context.Context, shopID int64) ([]model.ShopMember, error) {
+	var members []model.ShopMember
+	err := r.db.WithContext(ctx).
+		Preload("User").
+		Where("shop_id = ?", shopID).
+		Find(&members).Error
+	return members, err
+}
+
+// Delete 删除成员关联
+func (r *shopMemberRepository) Delete(ctx context.Context, userID, shopID int64) error {
+	return r.db.WithContext(ctx).
+		Where("user_id = ? AND shop_id = ?", userID, shopID).
+		Delete(&model.ShopMember{}).Error
+}
+
+// HasAccess 检查用户是否有店铺访问权限
+func (r *shopMemberRepository) HasAccess(ctx context.Context, userID, shopID int64) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&model.ShopMember{}).
+		Where("user_id = ? AND shop_id = ?", userID, shopID).
+		Count(&count).Error
+	return count > 0, err
+}
+
+// GetUserShopIDs 获取用户有权限的店铺 ID 列表
+func (r *shopMemberRepository) GetUserShopIDs(ctx context.Context, userID int64) ([]int64, error) {
+	var ids []int64
+	err := r.db.WithContext(ctx).Model(&model.ShopMember{}).
+		Where("user_id = ?", userID).
+		Pluck("shop_id", &ids).Error
+	return ids, err
 }

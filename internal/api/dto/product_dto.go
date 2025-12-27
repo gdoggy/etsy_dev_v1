@@ -105,9 +105,9 @@ type SyncProductsReq struct {
 // AIGenerateReq AI生成草稿请求
 type AIGenerateReq struct {
 	ShopID         int64  `json:"shop_id" binding:"required"`
-	SourceMaterial string `json:"source_material" binding:"required"` // 原始素材/描述
-	TargetCategory int64  `json:"target_category"`                    // 目标分类
-	StyleHint      string `json:"style_hint"`                         // 风格提示
+	SourceMaterial string `json:"source_material"` // 原始素材/描述
+	TargetCategory int64  `json:"target_category"` // 目标分类
+	StyleHint      string `json:"style_hint"`      // 风格提示
 }
 
 // ProductListReq 商品列表请求

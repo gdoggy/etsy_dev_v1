@@ -73,7 +73,8 @@ func (t *TokenTask) refreshJob(ctx context.Context) {
 
 	log.Printf("[Cron] 开始处理 %d 个店铺的 Token 刷新，并发上限: %d", len(shops), t.concurrencyLimit)
 
-	for _, shop := range shops {
+	for i := range shops {
+		shop := shops[i]
 		// 检查上下文是否已取消（超时处理）
 		select {
 		case <-ctx.Done():
@@ -89,9 +90,6 @@ func (t *TokenTask) refreshJob(ctx context.Context) {
 		// 3. 平滑波峰
 		time.Sleep(t.sleepTime)
 
-		// 4. 解决循环变量捕获问题 (Go 常见坑)
-		currentShop := shop
-
 		go func(s model.Shop) {
 			defer wg.Done()
 			defer func() { <-sem }() // 任务结束释放信号量
@@ -105,7 +103,7 @@ func (t *TokenTask) refreshJob(ctx context.Context) {
 				// 成功日志（可选，调试用）
 				// log.Printf("[Cron] 店铺 [%s] 刷新成功", s.ShopName)
 			}
-		}(currentShop)
+		}(shop)
 	}
 
 	// 5. 等待所有 Goroutine 完成

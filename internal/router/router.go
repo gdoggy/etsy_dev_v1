@@ -2,6 +2,7 @@ package router
 
 import (
 	"etsy_dev_v1_202512/internal/controller"
+	"etsy_dev_v1_202512/internal/middleware"
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -14,6 +15,7 @@ import (
 
 // Controllers 控制器集合
 type Controllers struct {
+	User         *controller.UserController
 	Proxy        *controller.ProxyController
 	Developer    *controller.DeveloperController
 	Auth         *controller.AuthController
@@ -22,9 +24,10 @@ type Controllers struct {
 	ReturnPolicy *controller.ReturnPolicyController
 	Product      *controller.ProductController
 	Draft        *controller.DraftController
-	Order        *controller.OrderController    // 新增
-	Shipment     *controller.ShipmentController // 新增
-	Karrio       *controller.KarrioController   // 新增
+	Order        *controller.OrderController
+	Shipment     *controller.ShipmentController
+	Karrio       *controller.KarrioController
+	Sync         *controller.SyncController
 }
 
 // ==================== 主路由设置 ====================
@@ -45,9 +48,20 @@ func SetupRouter(ctrl *Controllers) *gin.Engine {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
+	public := r.Group("/")
+	{
+		// 用户登录/注册
+		registerUserAuthRoutes(public, ctrl.User)
+		// Etsy OAuth 回调
+		registerAuthRoutes(public, ctrl.Auth)
+	}
+
 	// API 路由组
 	api := r.Group("/api")
+	api.Use(middleware.JWTAuth())
+	api.Use(middleware.AuditContext())
 	{
+		registerUserRoutes(api, ctrl.User)
 		registerProxyRoutes(api, ctrl.Proxy)
 		registerDeveloperRoutes(api, ctrl.Developer)
 		registerAuthRoutes(api, ctrl.Auth)
@@ -55,9 +69,10 @@ func SetupRouter(ctrl *Controllers) *gin.Engine {
 		registerShippingRoutes(api, ctrl.Shipping, ctrl.ReturnPolicy)
 		registerProductRoutes(api, ctrl.Product)
 		registerDraftRoutes(api, ctrl.Draft)
-		registerOrderRoutes(api, ctrl.Order)       // 新增
-		registerShipmentRoutes(api, ctrl.Shipment) // 新增
-		registerKarrioRoutes(api, ctrl.Karrio)     // 新增
+		registerOrderRoutes(api, ctrl.Order)
+		registerShipmentRoutes(api, ctrl.Shipment)
+		registerKarrioRoutes(api, ctrl.Karrio)
+		registerSyncRoutes(api, ctrl.Sync)
 	}
 
 	// Webhook 路由（独立于 API 组）
@@ -70,6 +85,45 @@ func SetupRouter(ctrl *Controllers) *gin.Engine {
 }
 
 // ==================== 模块路由注册 ====================
+
+// registerUserAuthRoutes 用户认证路由（公开）
+func registerUserAuthRoutes(api *gin.RouterGroup, ctl *controller.UserController) {
+	if ctl == nil {
+		return
+	}
+
+	auth := api.Group("/auth")
+	{
+		auth.POST("/login", ctl.Login)
+		auth.POST("/refresh", ctl.RefreshToken)
+	}
+}
+
+// registerUserRoutes 用户管理路由（需认证）
+func registerUserRoutes(api *gin.RouterGroup, ctl *controller.UserController) {
+	if ctl == nil {
+		return
+	}
+
+	// 当前用户
+	auth := api.Group("/auth")
+	{
+		auth.GET("/profile", ctl.GetProfile)
+		auth.PUT("/password", ctl.ChangePassword)
+	}
+
+	// 用户管理（仅管理员）
+	users := api.Group("/users")
+	users.Use(middleware.RequireRole("admin"))
+	{
+		users.GET("", ctl.ListUsers)
+		users.POST("", ctl.CreateUser)
+		users.GET("/:id", ctl.GetUser)
+		users.PUT("/:id", ctl.UpdateUser)
+		users.PUT("/:id/password", ctl.ResetPassword)
+		users.DELETE("/:id", ctl.DeleteUser)
+	}
+}
 
 // registerProxyRoutes 代理模块路由
 func registerProxyRoutes(api *gin.RouterGroup, ctl *controller.ProxyController) {
@@ -99,8 +153,8 @@ func registerDeveloperRoutes(api *gin.RouterGroup, ctl *controller.DeveloperCont
 
 // registerAuthRoutes 鉴权模块路由
 func registerAuthRoutes(api *gin.RouterGroup, ctl *controller.AuthController) {
-	// 通用回调
-	api.GET("/:path/auth/callback", ctl.Callback)
+	// todo 正式环境通用回调
+	//api.GET("/:path/oauth/callback", ctl.Callback)
 
 	auth := api.Group("/oauth")
 	{
@@ -311,13 +365,73 @@ func registerKarrioRoutes(api *gin.RouterGroup, ctl *controller.KarrioController
 }
 
 // registerWebhookRoutes Webhook 路由
-func registerWebhookRoutes(webhooks *gin.RouterGroup, shipmentCtl *controller.ShipmentController) {
-	if shipmentCtl == nil {
+func registerWebhookRoutes(webhooks *gin.RouterGroup, ctl *controller.ShipmentController) {
+	if ctl == nil {
 		return
 	}
 
 	// Karrio 物流跟踪 Webhook
-	webhooks.POST("/karrio/tracking", shipmentCtl.HandleWebhook)
+	webhooks.POST("/karrio/tracking", ctl.HandleWebhook)
+}
+
+// registerSyncRoutes 同步路由（含限流中间件）
+func registerSyncRoutes(r *gin.RouterGroup, ctrl *controller.SyncController) {
+	if ctrl == nil {
+		return
+	}
+
+	sync := r.Group("/sync")
+	{
+		// ==================== 店铺同步 ====================
+
+		// 同步单个店铺（限流：5 分钟）
+		sync.POST("/shops/:id",
+			middleware.SyncRateLimit(middleware.SyncTypeShop, 0),
+			ctrl.SyncShop,
+		)
+
+		// 同步所有店铺（全局限流：5 分钟）
+		sync.POST("/shops",
+			middleware.GlobalSyncRateLimit(middleware.SyncTypeShop, 0),
+			ctrl.SyncAllShops,
+		)
+
+		// ==================== 商品同步 ====================
+
+		// 同步单个店铺商品（限流：5 分钟）
+		sync.POST("/products/:shop_id",
+			middleware.SyncRateLimit(middleware.SyncTypeProduct, 0),
+			ctrl.SyncProducts,
+		)
+
+		// 同步所有商品（全局限流：5 分钟）
+		sync.POST("/products",
+			middleware.GlobalSyncRateLimit(middleware.SyncTypeProduct, 0),
+			ctrl.SyncAllProducts,
+		)
+
+		// ==================== 订单同步 ====================
+
+		// 同步单个店铺订单（限流：3 分钟）
+		sync.POST("/orders/:shop_id",
+			middleware.SyncRateLimit(middleware.SyncTypeOrder, 0),
+			ctrl.SyncOrders,
+		)
+
+		// 同步所有订单（全局限流：3 分钟）
+		sync.POST("/orders",
+			middleware.GlobalSyncRateLimit(middleware.SyncTypeOrder, 0),
+			ctrl.SyncAllOrders,
+		)
+
+		// ==================== 物流同步 ====================
+
+		// 刷新物流跟踪（全局限流：2 分钟）
+		sync.POST("/tracking/refresh",
+			middleware.GlobalSyncRateLimit(middleware.SyncTypeTracking, 0),
+			ctrl.RefreshTracking,
+		)
+	}
 }
 
 // ==================== 中间件 ====================

@@ -6,6 +6,16 @@ import (
 	"time"
 )
 
+const (
+	PROXY_SHARED  = 1
+	PROXY_PRIVATE = 0
+)
+const (
+	PROXY_STATUS_ACTIVE = 1
+	PROXY_STATUS_FAILED = 2
+	PROXY_STATUS_DEAD   = 3
+)
+
 type Proxy struct {
 	BaseModel
 	// 1. 基础配置
@@ -24,8 +34,8 @@ type Proxy struct {
 	// 3. 资源分配策略
 	Region string `gorm:"size:20;default:'US';index"`
 
-	// 容量类型：1:独享(Private) 2:共享(Shared)
-	Capacity int `gorm:"default:2"`
+	// 容量类型：0:独享(Private) 1:共享(Shared)
+	Capacity int `gorm:"default:1;comment: 0-独享 1-共享"`
 
 	// 软删除外的业务开关
 	IsActive bool `gorm:"default:true"`

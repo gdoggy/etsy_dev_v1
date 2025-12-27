@@ -126,7 +126,8 @@ func (t *DraftSubmitTask) execute(ctx context.Context) {
 		mu           sync.Mutex
 	)
 
-	for _, draft := range drafts {
+	for i := range drafts {
+		draft := drafts[i]
 		select {
 		case <-ctx.Done():
 			log.Println("[DraftSubmitTask] 任务超时停止")
@@ -139,13 +140,11 @@ func (t *DraftSubmitTask) execute(ctx context.Context) {
 		wg.Add(1)
 		time.Sleep(t.sleepTime)
 
-		currentDraft := draft
-
-		go func(d *model.DraftProduct) {
+		go func(d model.DraftProduct) {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			err := t.submitDraft(ctx, d)
+			err := t.submitDraft(ctx, &d)
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -157,7 +156,7 @@ func (t *DraftSubmitTask) execute(ctx context.Context) {
 				successCount++
 				log.Printf("[DraftSubmitTask] 草稿 %d 提交成功", d.ID)
 			}
-		}(currentDraft)
+		}(draft)
 	}
 
 	wg.Wait()
@@ -456,7 +455,7 @@ func (t *DraftCleanupTask) execute(ctx context.Context) {
 	log.Printf("[DraftCleanupTask] 发现 %d 个过期任务", len(tasks))
 
 	for _, task := range tasks {
-		t.cleanupTask(ctx, task)
+		t.cleanupTask(ctx, &task)
 	}
 }
 

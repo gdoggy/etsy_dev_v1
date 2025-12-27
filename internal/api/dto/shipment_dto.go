@@ -24,7 +24,7 @@ type UpdateEtsyShipmentRequest struct {
 	Status             string  `json:"status"`
 }
 
-// ListEtsyShipmentsRequest 发货列表请求
+// ListEtsyShipmentsRequest 发货列表请求 todo tags 是 form
 type ListEtsyShipmentsRequest struct {
 	OrderID        int64      `form:"order_id"`
 	CarrierCode    string     `form:"carrier_code"`
@@ -93,7 +93,7 @@ type TrackingEventResponse struct {
 
 // EtsyShipmentListResponse 发货列表响应
 type EtsyShipmentListResponse struct {
-	List     []EtsyShipmentResponse `json:"list"` // 修正：ShipmentResponse → EtsyShipmentResponse
+	List     []EtsyShipmentResponse `json:"list"`
 	Total    int64                  `json:"total"`
 	Page     int                    `json:"page"`
 	PageSize int                    `json:"page_size"`
@@ -101,7 +101,7 @@ type EtsyShipmentListResponse struct {
 
 // EtsyShipmentDetailResponse 发货详情响应
 type EtsyShipmentDetailResponse struct {
-	Shipment       *EtsyShipmentResponse   `json:"shipment"` // 修正：ShipmentResponse → EtsyShipmentResponse
+	Shipment       *EtsyShipmentResponse   `json:"shipment"`
 	Order          *OrderBriefResponse     `json:"order,omitempty"`
 	TrackingEvents []TrackingEventResponse `json:"tracking_events"`
 }

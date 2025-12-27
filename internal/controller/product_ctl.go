@@ -162,7 +162,7 @@ func (ctrl *ProductController) GenerateAIDraft(c *gin.Context) {
 // @Summary 审核通过 AI 生成的草稿
 // @Tags Product
 // @Param id path int true "商品ID"
-// @Success 200 {object} gin.H
+// @Success 200 {object} map[string]interface{}
 // @Router /api/products/{id}/approve [post]
 func (ctrl *ProductController) ApproveAIDraft(c *gin.Context) {
 	idStr := c.Param("id")
@@ -219,7 +219,7 @@ func (ctrl *ProductController) CreateProduct(c *gin.Context) {
 // @Produce json
 // @Param id path int true "商品ID"
 // @Param body body dto.UpdateProductReq true "更新内容"
-// @Success 200 {object} gin.H
+// @Success 200 {object} map[string]interface{}
 // @Router /api/products/{id} [patch]
 func (ctrl *ProductController) UpdateProduct(c *gin.Context) {
 	idStr := c.Param("id")
@@ -249,7 +249,7 @@ func (ctrl *ProductController) UpdateProduct(c *gin.Context) {
 // @Summary 删除商品 (同时删除 Etsy 远程)
 // @Tags Product
 // @Param id path int true "商品ID"
-// @Success 200 {object} gin.H
+// @Success 200 {object} map[string]interface{}
 // @Router /api/products/{id} [delete]
 func (ctrl *ProductController) DeleteProduct(c *gin.Context) {
 	idStr := c.Param("id")
@@ -274,7 +274,7 @@ func (ctrl *ProductController) DeleteProduct(c *gin.Context) {
 // @Summary 将商品状态改为 active
 // @Tags Product
 // @Param id path int true "商品ID"
-// @Success 200 {object} gin.H
+// @Success 200 {object} map[string]interface{}
 // @Router /api/products/{id}/activate [post]
 func (ctrl *ProductController) ActivateProduct(c *gin.Context) {
 	idStr := c.Param("id")
@@ -297,7 +297,7 @@ func (ctrl *ProductController) ActivateProduct(c *gin.Context) {
 // @Summary 将商品状态改为 inactive
 // @Tags Product
 // @Param id path int true "商品ID"
-// @Success 200 {object} gin.H
+// @Success 200 {object} map[string]interface{}
 // @Router /api/products/{id}/deactivate [post]
 func (ctrl *ProductController) DeactivateProduct(c *gin.Context) {
 	idStr := c.Param("id")
@@ -322,7 +322,7 @@ func (ctrl *ProductController) DeactivateProduct(c *gin.Context) {
 // @Summary 从 Etsy 全量同步商品
 // @Tags Product
 // @Param shop_id query int true "店铺ID"
-// @Success 200 {object} gin.H
+// @Success 200 {object} map[string]interface{}
 // @Router /api/products/sync [post]
 func (ctrl *ProductController) SyncProducts(c *gin.Context) {
 	shopIDStr := c.Query("shop_id")

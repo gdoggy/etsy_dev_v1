@@ -6,13 +6,11 @@ package dto
 type CreateProxyReq struct {
 	IP       string `json:"ip" binding:"required"`
 	Port     string `json:"port" binding:"required"`
-	Username string `json:"username"` // 可选
-	Password string `json:"password"` // 可选
+	Username string `json:"username"`
+	Password string `json:"password"`
 	// 协议限制校验
-	Protocol string `json:"protocol" binding:"required,oneof=http https socks5"`
-
-	Region   string `json:"region" binding:"required"`             // 如 "US"
-	Capacity int    `json:"capacity" binding:"required,oneof=1 2"` // 1:独享 2:共享
+	Protocol string `json:"protocol" binding:"omitempty,oneof=http https socks5"`
+	Region   string `json:"region" binding:"required"` // 如 "US"
 }
 
 // UpdateProxyReq 更新代理请求
@@ -24,8 +22,7 @@ type UpdateProxyReq struct {
 	Password string `json:"password"`
 	Protocol string `json:"protocol" binding:"omitempty,oneof=http https socks5"`
 	Region   string `json:"region"`
-	Capacity int    `json:"capacity" binding:"omitempty,oneof=1 2"`
-	Status   int    `json:"status" binding:"omitempty,oneof=1 2 3 4"` // 允许手动改状态
+	Status   int    `json:"status" binding:"omitempty,oneof=1 2 3 4"`
 }
 
 // Response DTO (返回给前端的数据)

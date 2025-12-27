@@ -1,9 +1,7 @@
 # ---
 # 第一阶段：builder
 # ---
-# 显式指定 --platform=$BUILDPLATFORM 利用本地架构缓存，但交叉编译目标架构
-# 这里为了稳妥，让 Go 自己处理交叉编译
-FROM golang:1.24-alpine AS builder
+FROM --platform=linux/amd64 golang:1.24-alpine AS builder
 
 # 1. 设置国内代理
 ENV GOPROXY=https://goproxy.cn,direct
@@ -40,7 +38,7 @@ LABEL authors="vip"
 RUN apk --no-cache add ca-certificates tzdata
 
 # 设置时区为上海
-ENV TZ=Asia/Shanghai
+ENV TZ=Asia/Hong_Kong
 
 WORKDIR /root/
 

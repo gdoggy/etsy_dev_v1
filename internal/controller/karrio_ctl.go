@@ -22,7 +22,13 @@ func NewKarrioController(karrio *service.KarrioClient) *KarrioController {
 // ==================== 健康检查 ====================
 
 // Ping 检查 Karrio 服务状态
-// GET /api/karrio/ping
+// @Summary 检查 Karrio 服务状态
+// @Description 检查 Karrio 物流网关服务是否可用
+// @Tags Karrio (物流网关)
+// @Produce json
+// @Success 200 {object} map[string]string "{"status": "healthy"}"
+// @Failure 503 {object} map[string]string "服务不可用"
+// @Router /api/karrio/ping [get]
 func (c *KarrioController) Ping(ctx *gin.Context) {
 	if c.karrio == nil {
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "Karrio 客户端未配置"})
@@ -43,7 +49,13 @@ func (c *KarrioController) Ping(ctx *gin.Context) {
 // ==================== 物流商连接管理 ====================
 
 // ListConnections 列出物流商连接
-// GET /api/karrio/connections
+// @Summary 获取物流商连接列表
+// @Description 获取已配置的所有物流商连接
+// @Tags Karrio (物流网关)
+// @Produce json
+// @Success 200 {object} map[string]interface{} "{"data": [], "total": 0}"
+// @Failure 500 {object} map[string]string "服务器错误"
+// @Router /api/karrio/connections [get]
 func (c *KarrioController) ListConnections(ctx *gin.Context) {
 	if c.karrio == nil {
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "Karrio 客户端未配置"})
@@ -63,7 +75,15 @@ func (c *KarrioController) ListConnections(ctx *gin.Context) {
 }
 
 // CreateConnection 创建物流商连接
-// POST /api/karrio/connections
+// @Summary 创建物流商连接
+// @Description 添加新的物流商账号连接（如 FedEx、UPS 等）
+// @Tags Karrio (物流网关)
+// @Accept json
+// @Produce json
+// @Param request body dto.CreateConnectionRequest true "连接参数"
+// @Success 201 {object} map[string]interface{} "{"data": {}, "message": "物流商连接创建成功"}"
+// @Failure 400 {object} map[string]string "参数错误"
+// @Router /api/karrio/connections [post]
 func (c *KarrioController) CreateConnection(ctx *gin.Context) {
 	if c.karrio == nil {
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "Karrio 客户端未配置"})
@@ -89,7 +109,14 @@ func (c *KarrioController) CreateConnection(ctx *gin.Context) {
 }
 
 // DeleteConnection 删除物流商连接
-// DELETE /api/karrio/connections/:id
+// @Summary 删除物流商连接
+// @Description 移除指定的物流商账号连接
+// @Tags Karrio (物流网关)
+// @Produce json
+// @Param id path string true "连接ID"
+// @Success 200 {object} map[string]string "{"message": "物流商连接已删除"}"
+// @Failure 400 {object} map[string]string "参数错误"
+// @Router /api/karrio/connections/{id} [delete]
 func (c *KarrioController) DeleteConnection(ctx *gin.Context) {
 	if c.karrio == nil {
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "Karrio 客户端未配置"})
@@ -113,7 +140,15 @@ func (c *KarrioController) DeleteConnection(ctx *gin.Context) {
 // ==================== 运费报价 ====================
 
 // GetRates 获取运费报价
-// POST /api/karrio/rates
+// @Summary 获取运费报价
+// @Description 根据包裹信息获取多个物流商的运费报价
+// @Tags Karrio (物流网关)
+// @Accept json
+// @Produce json
+// @Param request body dto.RateRequest true "报价请求参数"
+// @Success 200 {object} map[string]interface{} "{"data": []}"
+// @Failure 400 {object} map[string]string "参数错误"
+// @Router /api/karrio/rates [post]
 func (c *KarrioController) GetRates(ctx *gin.Context) {
 	if c.karrio == nil {
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "Karrio 客户端未配置"})
@@ -138,7 +173,16 @@ func (c *KarrioController) GetRates(ctx *gin.Context) {
 // ==================== 跟踪器管理 ====================
 
 // ListTrackers 列出跟踪器
-// GET /api/karrio/trackers
+// @Summary 获取跟踪器列表
+// @Description 获取所有物流跟踪器，支持按状态筛选
+// @Tags Karrio (物流网关)
+// @Produce json
+// @Param status query string false "状态筛选"
+// @Param limit query int false "每页数量" default(20)
+// @Param offset query int false "偏移量" default(0)
+// @Success 200 {object} map[string]interface{} "{"data": [], "total": 0}"
+// @Failure 500 {object} map[string]string "服务器错误"
+// @Router /api/karrio/trackers [get]
 func (c *KarrioController) ListTrackers(ctx *gin.Context) {
 	if c.karrio == nil {
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "Karrio 客户端未配置"})
@@ -162,7 +206,15 @@ func (c *KarrioController) ListTrackers(ctx *gin.Context) {
 }
 
 // CreateTracker 创建跟踪器
-// POST /api/karrio/trackers
+// @Summary 创建物流跟踪器
+// @Description 为指定运单号创建物流跟踪
+// @Tags Karrio (物流网关)
+// @Accept json
+// @Produce json
+// @Param request body dto.CreateTrackerRequest true "跟踪参数"
+// @Success 201 {object} map[string]interface{} "{"data": {}, "message": "跟踪器创建成功"}"
+// @Failure 400 {object} map[string]string "参数错误"
+// @Router /api/karrio/trackers [post]
 func (c *KarrioController) CreateTracker(ctx *gin.Context) {
 	if c.karrio == nil {
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "Karrio 客户端未配置"})
@@ -188,7 +240,14 @@ func (c *KarrioController) CreateTracker(ctx *gin.Context) {
 }
 
 // GetTracker 获取跟踪详情
-// GET /api/karrio/trackers/:id
+// @Summary 获取跟踪器详情
+// @Description 获取指定跟踪器的详细物流信息
+// @Tags Karrio (物流网关)
+// @Produce json
+// @Param id path string true "跟踪器ID"
+// @Success 200 {object} map[string]interface{} "{"data": {}}"
+// @Failure 404 {object} map[string]string "跟踪器不存在"
+// @Router /api/karrio/trackers/{id} [get]
 func (c *KarrioController) GetTracker(ctx *gin.Context) {
 	if c.karrio == nil {
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "Karrio 客户端未配置"})
@@ -211,7 +270,14 @@ func (c *KarrioController) GetTracker(ctx *gin.Context) {
 }
 
 // RefreshTracker 刷新跟踪状态
-// POST /api/karrio/trackers/:id/refresh
+// @Summary 刷新跟踪状态
+// @Description 手动刷新指定跟踪器的物流状态
+// @Tags Karrio (物流网关)
+// @Produce json
+// @Param id path string true "跟踪器ID"
+// @Success 200 {object} map[string]interface{} "{"data": {}, "message": "跟踪状态已刷新"}"
+// @Failure 400 {object} map[string]string "刷新失败"
+// @Router /api/karrio/trackers/{id}/refresh [post]
 func (c *KarrioController) RefreshTracker(ctx *gin.Context) {
 	if c.karrio == nil {
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "Karrio 客户端未配置"})
@@ -237,7 +303,15 @@ func (c *KarrioController) RefreshTracker(ctx *gin.Context) {
 }
 
 // BatchCreateTrackers 批量创建跟踪器
-// POST /api/karrio/trackers/batch
+// @Summary 批量创建跟踪器
+// @Description 批量为多个运单号创建物流跟踪
+// @Tags Karrio (物流网关)
+// @Accept json
+// @Produce json
+// @Param request body dto.BatchCreateTrackersRequest true "批量跟踪参数"
+// @Success 201 {object} map[string]interface{} "{"data": [], "count": 0, "message": "批量创建成功"}"
+// @Failure 400 {object} map[string]string "参数错误"
+// @Router /api/karrio/trackers/batch [post]
 func (c *KarrioController) BatchCreateTrackers(ctx *gin.Context) {
 	if c.karrio == nil {
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "Karrio 客户端未配置"})
@@ -266,7 +340,14 @@ func (c *KarrioController) BatchCreateTrackers(ctx *gin.Context) {
 // ==================== 运单管理 ====================
 
 // GetShipment 获取运单详情
-// GET /api/karrio/shipments/:id
+// @Summary 获取 Karrio 运单详情
+// @Description 获取 Karrio 系统中的运单详细信息
+// @Tags Karrio (物流网关)
+// @Produce json
+// @Param id path string true "运单ID"
+// @Success 200 {object} map[string]interface{} "{"data": {}}"
+// @Failure 404 {object} map[string]string "运单不存在"
+// @Router /api/karrio/shipments/{id} [get]
 func (c *KarrioController) GetShipment(ctx *gin.Context) {
 	if c.karrio == nil {
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "Karrio 客户端未配置"})
@@ -289,7 +370,14 @@ func (c *KarrioController) GetShipment(ctx *gin.Context) {
 }
 
 // CancelShipment 取消运单
-// POST /api/karrio/shipments/:id/cancel
+// @Summary 取消 Karrio 运单
+// @Description 取消 Karrio 系统中的运单
+// @Tags Karrio (物流网关)
+// @Produce json
+// @Param id path string true "运单ID"
+// @Success 200 {object} map[string]string "{"message": "运单已取消"}"
+// @Failure 400 {object} map[string]string "取消失败"
+// @Router /api/karrio/shipments/{id}/cancel [post]
 func (c *KarrioController) CancelShipment(ctx *gin.Context) {
 	if c.karrio == nil {
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "Karrio 客户端未配置"})

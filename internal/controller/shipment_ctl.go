@@ -25,7 +25,15 @@ func NewShipmentController(svc *service.ShipmentService) *ShipmentController {
 // ==================== 发货管理 ====================
 
 // Create 创建发货
-// POST /api/shipments
+// @Summary 创建发货记录
+// @Description 为订单创建发货记录，填写物流商和运单号
+// @Tags Shipment (发货管理)
+// @Accept json
+// @Produce json
+// @Param request body dto.CreateEtsyShipmentRequest true "发货参数"
+// @Success 201 {object} map[string]interface{} "{"data": dto.EtsyShipmentResponse, "message": "发货成功"}"
+// @Failure 400 {object} map[string]string "参数错误"
+// @Router /api/shipments [post]
 func (c *ShipmentController) Create(ctx *gin.Context) {
 	var req dto.CreateEtsyShipmentRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -46,7 +54,15 @@ func (c *ShipmentController) Create(ctx *gin.Context) {
 }
 
 // CreateWithLabel 创建发货并生成面单
-// POST /api/shipments/with-label
+// @Summary 创建发货并生成面单
+// @Description 为订单创建发货，自动生成物流面单
+// @Tags Shipment (发货管理)
+// @Accept json
+// @Produce json
+// @Param request body dto.CreateLabelRequest true "面单参数"
+// @Success 201 {object} map[string]interface{} "{"data": dto.EtsyShipmentResponse, "message": "发货成功，面单已生成"}"
+// @Failure 400 {object} map[string]string "参数错误"
+// @Router /api/shipments/with-label [post]
 func (c *ShipmentController) CreateWithLabel(ctx *gin.Context) {
 	var req dto.CreateLabelRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -67,7 +83,15 @@ func (c *ShipmentController) CreateWithLabel(ctx *gin.Context) {
 }
 
 // GetByID 获取发货详情
-// GET /api/shipments/:id
+// @Summary 获取发货详情
+// @Description 根据发货记录ID获取详细信息
+// @Tags Shipment (发货管理)
+// @Produce json
+// @Param id path int true "发货记录ID"
+// @Success 200 {object} map[string]interface{} "{"data": dto.EtsyShipmentResponse}"
+// @Failure 400 {object} map[string]string "ID格式错误"
+// @Failure 404 {object} map[string]string "发货记录不存在"
+// @Router /api/shipments/{id} [get]
 func (c *ShipmentController) GetByID(ctx *gin.Context) {
 	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil {
@@ -85,7 +109,15 @@ func (c *ShipmentController) GetByID(ctx *gin.Context) {
 }
 
 // GetByOrderID 根据订单获取发货
-// GET /api/orders/:order_id/shipment
+// @Summary 根据订单ID获取发货信息
+// @Description 获取指定订单的发货记录
+// @Tags Shipment (发货管理)
+// @Produce json
+// @Param order_id path int true "订单ID"
+// @Success 200 {object} map[string]interface{} "{"data": dto.EtsyShipmentResponse}"
+// @Failure 400 {object} map[string]string "ID格式错误"
+// @Failure 404 {object} map[string]string "发货记录不存在"
+// @Router /api/orders/{order_id}/shipment [get]
 func (c *ShipmentController) GetByOrderID(ctx *gin.Context) {
 	orderID, err := strconv.ParseInt(ctx.Param("order_id"), 10, 64)
 	if err != nil {
@@ -103,7 +135,22 @@ func (c *ShipmentController) GetByOrderID(ctx *gin.Context) {
 }
 
 // List 发货列表
-// GET /api/shipments
+// @Summary 获取发货列表
+// @Description 分页查询发货记录，支持多条件筛选
+// @Tags Shipment (发货管理)
+// @Produce json
+// @Param order_id query int false "订单ID"
+// @Param carrier_code query string false "物流商代码"
+// @Param status query string false "发货状态"
+// @Param tracking_number query string false "运单号"
+// @Param etsy_synced query bool false "是否已同步Etsy"
+// @Param start_date query string false "开始日期 (YYYY-MM-DD)"
+// @Param end_date query string false "结束日期 (YYYY-MM-DD)"
+// @Param page query int false "页码" default(1)
+// @Param page_size query int false "每页数量" default(20)
+// @Success 200 {object} map[string]interface{} "{"data": dto.EtsyShipmentListResponse}"
+// @Failure 500 {object} map[string]string "服务器错误"
+// @Router /api/shipments [get]
 func (c *ShipmentController) List(ctx *gin.Context) {
 	var filter repository.ShipmentFilter
 
@@ -157,7 +204,14 @@ func (c *ShipmentController) List(ctx *gin.Context) {
 // ==================== 物流跟踪 ====================
 
 // RefreshTracking 刷新物流跟踪
-// POST /api/shipments/:id/refresh-tracking
+// @Summary 刷新物流跟踪状态
+// @Description 手动刷新指定发货记录的物流轨迹
+// @Tags Shipment (发货管理)
+// @Produce json
+// @Param id path int true "发货记录ID"
+// @Success 200 {object} map[string]interface{} "{"data": dto.EtsyShipmentResponse, "message": "物流信息已刷新"}"
+// @Failure 400 {object} map[string]string "刷新失败"
+// @Router /api/shipments/{id}/refresh-tracking [post]
 func (c *ShipmentController) RefreshTracking(ctx *gin.Context) {
 	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil {
@@ -170,7 +224,6 @@ func (c *ShipmentController) RefreshTracking(ctx *gin.Context) {
 		return
 	}
 
-	// 返回更新后的发货信息
 	shipment, _ := c.svc.GetByID(ctx, id)
 	ctx.JSON(http.StatusOK, gin.H{
 		"data":    c.toResponse(shipment),
@@ -181,7 +234,14 @@ func (c *ShipmentController) RefreshTracking(ctx *gin.Context) {
 // ==================== Etsy 同步 ====================
 
 // SyncToEtsy 同步到 Etsy
-// POST /api/shipments/:id/sync-etsy
+// @Summary 同步发货信息到 Etsy
+// @Description 将发货信息同步到 Etsy 平台，更新订单的发货状态
+// @Tags Shipment (发货管理)
+// @Produce json
+// @Param id path int true "发货记录ID"
+// @Success 200 {object} map[string]string "{"message": "已同步到 Etsy"}"
+// @Failure 400 {object} map[string]string "同步失败"
+// @Router /api/shipments/{id}/sync-etsy [post]
 func (c *ShipmentController) SyncToEtsy(ctx *gin.Context) {
 	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil {
@@ -200,7 +260,15 @@ func (c *ShipmentController) SyncToEtsy(ctx *gin.Context) {
 // ==================== Webhook ====================
 
 // HandleWebhook 处理 Karrio Webhook
-// POST /api/webhooks/karrio/tracking
+// @Summary 处理 Karrio 物流回调
+// @Description 接收 Karrio 推送的物流状态更新事件
+// @Tags Shipment (发货管理)
+// @Accept json
+// @Produce json
+// @Param request body object true "Webhook 载荷"
+// @Success 200 {object} map[string]string "{"message": "processed"}"
+// @Failure 400 {object} map[string]string "处理失败"
+// @Router /api/webhooks/karrio/tracking [post]
 func (c *ShipmentController) HandleWebhook(ctx *gin.Context) {
 	var payload struct {
 		Event     string `json:"event"`
@@ -219,7 +287,6 @@ func (c *ShipmentController) HandleWebhook(ctx *gin.Context) {
 		return
 	}
 
-	// 只处理 tracking.updated 事件
 	if payload.Event != "tracking.updated" {
 		ctx.JSON(http.StatusOK, gin.H{"message": "ignored"})
 		return
@@ -236,7 +303,12 @@ func (c *ShipmentController) HandleWebhook(ctx *gin.Context) {
 // ==================== 物流商 ====================
 
 // GetCarriers 获取物流商列表
-// GET /api/shipments/carriers
+// @Summary 获取支持的物流商列表
+// @Description 获取系统支持的所有物流商及其代码
+// @Tags Shipment (发货管理)
+// @Produce json
+// @Success 200 {object} map[string]interface{} "{"data": []}"
+// @Router /api/shipments/carriers [get]
 func (c *ShipmentController) GetCarriers(ctx *gin.Context) {
 	carriers := c.svc.GetSupportedCarriers()
 	ctx.JSON(http.StatusOK, gin.H{"data": carriers})
@@ -285,7 +357,6 @@ func (c *ShipmentController) toResponse(s *model.Shipment) dto.EtsyShipmentRespo
 		resp.DeliveredAt = &t
 	}
 
-	// 转换轨迹事件
 	if len(s.TrackingEvents) > 0 {
 		resp.TrackingEvents = make([]dto.TrackingEventResponse, len(s.TrackingEvents))
 		for i, e := range s.TrackingEvents {

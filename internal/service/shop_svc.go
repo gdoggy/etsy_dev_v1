@@ -32,6 +32,7 @@ type ShopService struct {
 	policyRepo      repository.ReturnPolicyRepository
 	developerRepo   repository.DeveloperRepository
 	dispatcher      net.Dispatcher
+	proxyRepo       repository.ProxyRepository
 }
 
 func NewShopService(
@@ -43,6 +44,7 @@ func NewShopService(
 	policyRepo repository.ReturnPolicyRepository,
 	developerRepo repository.DeveloperRepository,
 	dispatcher net.Dispatcher,
+	proxyRepo repository.ProxyRepository,
 ) *ShopService {
 	return &ShopService{
 		shopRepo:        shopRepo,
@@ -53,6 +55,7 @@ func NewShopService(
 		policyRepo:      policyRepo,
 		developerRepo:   developerRepo,
 		dispatcher:      dispatcher,
+		proxyRepo:       proxyRepo,
 	}
 }
 
@@ -126,23 +129,33 @@ func (s *ShopService) GetShopDetail(ctx context.Context, id int64) (*dto.ShopDet
 
 // CreateShop 创建空店铺记录
 // 调用方：AuthService（初次授权时）
-func (s *ShopService) CreateShop(ctx context.Context, shop *model.Shop) error {
-	existing, err := s.shopRepo.GetByEtsyShopID(ctx, shop.EtsyShopID)
+func (s *ShopService) CreateShop(ctx context.Context, shop *model.Shop) (*model.Shop, error) {
+	existing, err := s.shopRepo.GetByID(ctx, shop.ID)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
+		return nil, err
 	}
 	if existing != nil {
-		return errors.New("店铺已存在")
+		return nil, errors.New("店铺已存在")
 	}
 
-	shop.Status = model.ShopStatusActive
-	shop.TokenStatus = model.ShopTokenStatusValid
+	shop.Status = model.ShopStatusPending
+	shop.TokenStatus = model.ShopTokenStatusInvalid
 	// 绑定 developer
-	shop.Developer, err = s.developerRepo.FindBestByRegion(ctx, shop.Region)
+	dev, err := s.developerRepo.FindBestDev(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return s.shopRepo.Create(ctx, shop)
+	shop.DeveloperID = dev.ID
+	// 绑定 proxy
+	proxy, err := s.proxyRepo.FindSpareProxy(ctx, shop.Region)
+	if err != nil {
+		return nil, err
+	}
+	shop.ProxyID = proxy.ID
+	if err := s.shopRepo.Create(ctx, shop); err != nil {
+		return nil, err
+	}
+	return shop, nil
 }
 
 // GetByEtsyShopID 根据 EtsyShopID 查询店铺

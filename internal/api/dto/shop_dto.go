@@ -4,7 +4,7 @@ import "time"
 
 // ================== Shop && Shipping DTO ==================
 
-// ShopListReq 店铺列表请求
+// ShopListReq 店铺列表请求 todo form
 type ShopListReq struct {
 	Page        int    `form:"page,default=1"`
 	PageSize    int    `form:"page_size,default=20"`

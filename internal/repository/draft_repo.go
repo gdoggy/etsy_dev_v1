@@ -22,7 +22,7 @@ type DraftTaskRepository interface {
 	UpdateStatus(ctx context.Context, id int64, status, aiStatus string) error
 
 	// 过期清理相关
-	FindExpired(ctx context.Context, before time.Time) ([]*model.DraftTask, error)
+	FindExpired(ctx context.Context, before time.Time) ([]model.DraftTask, error)
 	MarkExpired(ctx context.Context, id int64) error
 }
 
@@ -39,7 +39,7 @@ type DraftProductRepository interface {
 	CountByTaskID(ctx context.Context, taskID int64) (int64, error)
 
 	// 提交任务相关
-	FindPendingSubmit(ctx context.Context, limit int) ([]*model.DraftProduct, error)
+	FindPendingSubmit(ctx context.Context, limit int) ([]model.DraftProduct, error)
 	UpdateSyncStatus(ctx context.Context, id int64, status int) error
 	MarkSubmitted(ctx context.Context, id int64, listingID int64) error
 	MarkFailed(ctx context.Context, id int64, errMsg string) error
@@ -153,9 +153,10 @@ func (r *draftTaskRepo) UpdateStatus(ctx context.Context, id int64, status, aiSt
 }
 
 // FindExpired 查找过期的草稿任务
-func (r *draftTaskRepo) FindExpired(ctx context.Context, before time.Time) ([]*model.DraftTask, error) {
-	var tasks []*model.DraftTask
+func (r *draftTaskRepo) FindExpired(ctx context.Context, before time.Time) ([]model.DraftTask, error) {
+	var tasks []model.DraftTask
 	err := r.db.WithContext(ctx).
+		Model(&model.DraftTask{}).
 		Where("created_at < ? AND status = ?", before, model.TaskStatusDraft).
 		Find(&tasks).Error
 	return tasks, err
@@ -235,9 +236,10 @@ func (r *draftProductRepo) CountByTaskID(ctx context.Context, taskID int64) (int
 }
 
 // FindPendingSubmit 查找待提交的草稿商品
-func (r *draftProductRepo) FindPendingSubmit(ctx context.Context, limit int) ([]*model.DraftProduct, error) {
-	var products []*model.DraftProduct
+func (r *draftProductRepo) FindPendingSubmit(ctx context.Context, limit int) ([]model.DraftProduct, error) {
+	var products []model.DraftProduct
 	err := r.db.WithContext(ctx).
+		Model(&model.DraftProduct{}).
 		Where("status = ? AND sync_status = ?", model.DraftStatusConfirmed, model.DraftSyncStatusPending).
 		Limit(limit).
 		Find(&products).Error
@@ -332,6 +334,7 @@ func (r *draftImageRepo) Delete(ctx context.Context, id int64) error {
 func (r *draftImageRepo) GetByTaskID(ctx context.Context, taskID int64) ([]model.DraftImage, error) {
 	var images []model.DraftImage
 	err := r.db.WithContext(ctx).
+		Model(&model.DraftImage{}).
 		Where("task_id = ?", taskID).
 		Order("group_index ASC, image_index ASC").
 		Find(&images).Error

@@ -2,16 +2,17 @@ package task
 
 import (
 	"context"
-	"etsy_dev_v1_202512/internal/model"
-	"etsy_dev_v1_202512/internal/repository"
 	"log"
 	"sync"
 	"time"
 
 	"github.com/robfig/cron/v3"
+
+	"etsy_dev_v1_202512/internal/model"
+	"etsy_dev_v1_202512/internal/repository"
 )
 
-// ==================== 外部依赖接口 ====================
+// ==================== 接口定义 ====================
 
 // ShipmentTracker 物流跟踪接口
 type ShipmentTracker interface {
@@ -21,12 +22,16 @@ type ShipmentTracker interface {
 
 // ==================== TrackingSyncTask 物流跟踪同步任务 ====================
 
-// TrackingSyncTask 定时同步物流跟踪信息
+// TrackingSyncTask 物流跟踪同步定时任务
+// 包含两个子任务：
+//   - 刷新物流跟踪信息（每 30 分钟）
+//   - 同步发货信息到 Etsy（每 15 分钟）
 type TrackingSyncTask struct {
 	shipmentRepo repository.ShipmentRepository
 	tracker      ShipmentTracker
 	cron         *cron.Cron
 
+	// 并发控制
 	concurrencyLimit int
 	sleepTime        time.Duration
 }
@@ -45,35 +50,42 @@ func NewTrackingSyncTask(
 	}
 }
 
+// SetConcurrency 设置并发参数
+func (t *TrackingSyncTask) SetConcurrency(limit int, sleep time.Duration) {
+	t.concurrencyLimit = limit
+	t.sleepTime = sleep
+}
+
 // Start 启动定时任务
 func (t *TrackingSyncTask) Start() {
-	// 物流跟踪刷新（每30分钟）
-	_, err := t.cron.AddFunc("0 0/30 * * * *", func() {
+	// 物流跟踪刷新（每 30 分钟）
+	_, err := t.cron.AddFunc("0 */30 * * * *", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
 		t.refreshTrackingJob(ctx)
 	})
 	if err != nil {
-		log.Fatalf("[TrackingSyncTask] 无法启动跟踪刷新任务: %v", err)
+		log.Printf("[TrackingSyncTask] 跟踪刷新任务启动失败: %v", err)
 	}
 
-	// Etsy 同步（每15分钟）
-	_, err = t.cron.AddFunc("0 0/15 * * * *", func() {
+	// Etsy 同步（每 15 分钟）
+	_, err = t.cron.AddFunc("0 */15 * * * *", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 		t.syncToEtsyJob(ctx)
 	})
 	if err != nil {
-		log.Fatalf("[TrackingSyncTask] 无法启动 Etsy 同步任务: %v", err)
+		log.Printf("[TrackingSyncTask] Etsy 同步任务启动失败: %v", err)
 	}
 
 	t.cron.Start()
-	log.Println("[TrackingSyncTask] 物流跟踪同步任务已启动")
+	log.Println("[TrackingSyncTask] 已启动 (跟踪刷新每30分钟/Etsy同步每15分钟)")
 }
 
-// Stop 停止定时任务
+// Stop 停止任务
 func (t *TrackingSyncTask) Stop() {
-	t.cron.Stop()
+	ctx := t.cron.Stop()
+	<-ctx.Done()
 	log.Println("[TrackingSyncTask] 已停止")
 }
 
@@ -93,13 +105,15 @@ func (t *TrackingSyncTask) refreshTrackingJob(ctx context.Context) {
 
 	sem := make(chan struct{}, t.concurrencyLimit)
 	var wg sync.WaitGroup
-	var successCount, failCount int32
+	var successCount, failCount int
 	var mu sync.Mutex
 
-	for _, shipment := range shipments {
+	for i := range shipments {
+		shipment := &shipments[i]
 		select {
 		case <-ctx.Done():
 			log.Println("[TrackingSyncTask] 跟踪刷新任务超时停止")
+			wg.Wait()
 			return
 		default:
 		}
@@ -108,7 +122,7 @@ func (t *TrackingSyncTask) refreshTrackingJob(ctx context.Context) {
 		wg.Add(1)
 		time.Sleep(t.sleepTime)
 
-		go func(s model.Shipment) {
+		go func(s *model.Shipment) {
 			defer wg.Done()
 			defer func() { <-sem }()
 
@@ -145,13 +159,15 @@ func (t *TrackingSyncTask) syncToEtsyJob(ctx context.Context) {
 
 	sem := make(chan struct{}, t.concurrencyLimit)
 	var wg sync.WaitGroup
-	var successCount, failCount int32
+	var successCount, failCount int
 	var mu sync.Mutex
 
-	for _, shipment := range shipments {
+	for i := range shipments {
+		shipment := &shipments[i]
 		select {
 		case <-ctx.Done():
 			log.Println("[TrackingSyncTask] Etsy 同步任务超时停止")
+			wg.Wait()
 			return
 		default:
 		}
@@ -160,7 +176,7 @@ func (t *TrackingSyncTask) syncToEtsyJob(ctx context.Context) {
 		wg.Add(1)
 		time.Sleep(t.sleepTime)
 
-		go func(s model.Shipment) {
+		go func(s *model.Shipment) {
 			defer wg.Done()
 			defer func() { <-sem }()
 
@@ -181,113 +197,22 @@ func (t *TrackingSyncTask) syncToEtsyJob(ctx context.Context) {
 	log.Printf("[TrackingSyncTask] Etsy 同步完成: 成功 %d, 失败 %d", successCount, failCount)
 }
 
-// ==================== EtsySyncTask Etsy 发货同步任务 ====================
+// ==================== 手动触发 ====================
 
-// EtsySyncTask 专门处理 Etsy 发货同步
-type EtsySyncTask struct {
-	shipmentRepo repository.ShipmentRepository
-	orderRepo    repository.OrderRepository
-	syncer       EtsyShipmentSyncer
-	cron         *cron.Cron
-
-	concurrencyLimit int
+// RefreshNow 立即刷新物流跟踪
+func (t *TrackingSyncTask) RefreshNow() {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		t.refreshTrackingJob(ctx)
+	}()
 }
 
-// EtsyShipmentSyncer Etsy 发货同步器接口
-type EtsyShipmentSyncer interface {
-	CreateReceipt(ctx context.Context, shopID int64, receiptID int64, trackingCode, carrierName string) error
-}
-
-// NewEtsySyncTask 创建 Etsy 同步任务
-func NewEtsySyncTask(
-	shipmentRepo repository.ShipmentRepository,
-	orderRepo repository.OrderRepository,
-	syncer EtsyShipmentSyncer,
-) *EtsySyncTask {
-	return &EtsySyncTask{
-		shipmentRepo:     shipmentRepo,
-		orderRepo:        orderRepo,
-		syncer:           syncer,
-		cron:             cron.New(cron.WithSeconds()),
-		concurrencyLimit: 10,
-	}
-}
-
-// Start 启动任务
-func (t *EtsySyncTask) Start() {
-	// 每10分钟检查一次
-	_, err := t.cron.AddFunc("0 0/10 * * * *", func() {
+// SyncToEtsyNow 立即同步到 Etsy
+func (t *TrackingSyncTask) SyncToEtsyNow() {
+	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		t.syncJob(ctx)
-	})
-	if err != nil {
-		log.Fatalf("[EtsySyncTask] 无法启动任务: %v", err)
-	}
-
-	t.cron.Start()
-	log.Println("[EtsySyncTask] Etsy 发货同步任务已启动 (每10分钟)")
-}
-
-// Stop 停止任务
-func (t *EtsySyncTask) Stop() {
-	t.cron.Stop()
-	log.Println("[EtsySyncTask] 已停止")
-}
-
-// syncJob 同步任务
-func (t *EtsySyncTask) syncJob(ctx context.Context) {
-	shipments, err := t.shipmentRepo.GetPendingEtsySyncShipments(ctx, 50)
-	if err != nil {
-		log.Printf("[EtsySyncTask] 获取待同步记录失败: %v", err)
-		return
-	}
-
-	if len(shipments) == 0 {
-		return
-	}
-
-	log.Printf("[EtsySyncTask] 开始同步 %d 条发货记录", len(shipments))
-
-	sem := make(chan struct{}, t.concurrencyLimit)
-	var wg sync.WaitGroup
-
-	for _, shipment := range shipments {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		sem <- struct{}{}
-		wg.Add(1)
-
-		go func(s model.Shipment) {
-			defer wg.Done()
-			defer func() { <-sem }()
-
-			// 获取订单信息
-			order, err := t.orderRepo.GetByID(ctx, s.OrderID)
-			if err != nil {
-				log.Printf("[EtsySyncTask] 获取订单失败: %v", err)
-				t.shipmentRepo.MarkEtsySyncFailed(ctx, s.ID, "订单不存在")
-				return
-			}
-
-			// 调用 Etsy API
-			err = t.syncer.CreateReceipt(ctx, order.ShopID, order.EtsyReceiptID, s.TrackingNumber, s.CarrierName)
-			if err != nil {
-				log.Printf("[EtsySyncTask] 同步失败: %v", err)
-				t.shipmentRepo.MarkEtsySyncFailed(ctx, s.ID, err.Error())
-				return
-			}
-
-			// 标记成功
-			t.shipmentRepo.MarkEtsySynced(ctx, s.ID)
-			log.Printf("[EtsySyncTask] 发货 %d 同步成功", s.ID)
-		}(shipment)
-	}
-
-	wg.Wait()
-	log.Println("[EtsySyncTask] 本轮同步完成")
+		t.syncToEtsyJob(ctx)
+	}()
 }

@@ -32,14 +32,6 @@ func NewDeveloperService(developerRepo repository.DeveloperRepository, shopRepo 
 	}
 }
 
-// GetDeveloperByRegion 找到一个合适的 apiKey
-func (s *DeveloperService) GetDeveloperByRegion(ctx context.Context, region string) (*model.Developer, error) {
-	dev, err := s.DeveloperRepo.FindBestByRegion(ctx, region)
-	if err != nil {
-		return nil, err
-	}
-	return dev, nil
-}
 func (s *DeveloperService) CreateDeveloper(ctx context.Context, req dto.CreateDeveloperReq) (string, error) {
 	// 1. 查重逻辑：防止 apiKey 重复
 	existDev, err := s.DeveloperRepo.FindByApiKey(ctx, req.ApiKey)

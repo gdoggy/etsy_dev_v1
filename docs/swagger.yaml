@@ -1,60 +1,2183 @@
 definitions:
-  etsy_dev_v1_202512_core_view.ProductListResp:
+  dto.AIGenerateReq:
     properties:
-      code:
-        example: 0
+      shop_id:
         type: integer
-      data:
-        items:
-          $ref: '#/definitions/etsy_dev_v1_202512_core_view.ProductResp'
-        type: array
-      message:
-        example: success
+      source_material:
+        description: 原始素材/描述
         type: string
-      page:
-        example: 1
+      style_hint:
+        description: 风格提示
+        type: string
+      target_category:
+        description: 目标分类
         type: integer
-      page_size:
-        example: 20
-        type: integer
-      total:
-        example: 100
-        type: integer
+    required:
+    - shop_id
     type: object
-  etsy_dev_v1_202512_core_view.ProductResp:
+  dto.AIGenerateResult:
     properties:
-      currency:
+      description:
         type: string
-      id:
-        type: integer
-      img_url:
-        description: 暂时留空，后续可以加
-        type: string
-      last_updated:
-        type: string
-      listing_id:
-        description: 这里的 ID 转字符串防止前端大数精度丢失
-        type: string
-      price:
-        description: 组合字段：直接给前端一个浮点数价格
-        type: number
-      quantity:
-        type: integer
-      state:
-        type: string
+      images:
+        items:
+          type: string
+        type: array
       tags:
         items:
           type: string
         type: array
       title:
         type: string
-      views:
+    type: object
+  dto.Address:
+    properties:
+      address_line1:
+        type: string
+      address_line2:
+        type: string
+      city:
+        type: string
+      company_name:
+        type: string
+      country_code:
+        type: string
+      email:
+        type: string
+      person_name:
+        type: string
+      phone_number:
+        type: string
+      postal_code:
+        type: string
+      state_code:
+        type: string
+    type: object
+  dto.Attr:
+    properties:
+      name:
+        type: string
+      value:
+        type: string
+    type: object
+  dto.BatchCreateTrackersRequest:
+    properties:
+      trackers:
+        items:
+          $ref: '#/definitions/dto.CreateTrackerRequest'
+        type: array
+    type: object
+  dto.BoundDeveloperItem:
+    properties:
+      api_key:
+        description: KeyString
+        type: string
+      id:
         type: integer
+      name:
+        description: 开发者应用备注名
+        type: string
+    type: object
+  dto.BoundShopItem:
+    properties:
+      etsy_shop_id:
+        description: Etsy 侧 ID
+        type: integer
+      shop_id:
+        description: ERP 内部 ID
+        type: integer
+      shop_name:
+        description: 店铺名
+        type: string
+      status:
+        description: 店铺状态
+        type: string
+    type: object
+  dto.CreateConnectionRequest:
+    properties:
+      active:
+        type: boolean
+      carrier_id:
+        type: string
+      carrier_name:
+        type: string
+      config:
+        additionalProperties: {}
+        type: object
+      credentials:
+        additionalProperties: {}
+        type: object
+    type: object
+  dto.CreateDeveloperReq:
+    properties:
+      api_key:
+        description: API 凭证
+        type: string
+      login_email:
+        description: 登录邮箱
+        type: string
+      login_pwd:
+        description: 登录密码
+        type: string
+      name:
+        description: 基础信息
+        maxLength: 50
+        type: string
+      shared_secret:
+        description: Shared Secret
+        type: string
+    required:
+    - api_key
+    - shared_secret
+    type: object
+  dto.CreateDraftRequest:
+    properties:
+      extra_prompt:
+        type: string
+      image_count:
+        description: 1-20, 默认20
+        type: integer
+      quantity:
+        description: 库存数量
+        minimum: 1
+        type: integer
+      shop_ids:
+        items:
+          type: integer
+        maxItems: 10
+        minItems: 1
+        type: array
+      source_url:
+        type: string
+      style_hint:
+        type: string
+      user_id:
+        type: integer
+    required:
+    - quantity
+    - shop_ids
+    - source_url
+    - user_id
+    type: object
+  dto.CreateDraftResult:
+    properties:
+      created_at:
+        type: string
+      status:
+        type: string
+      task_id:
+        type: integer
+    type: object
+  dto.CreateEtsyShipmentRequest:
+    properties:
+      carrier_code:
+        description: yanwen, wanbang
+        type: string
+      order_id:
+        type: integer
+      service_code:
+        description: 服务代码
+        type: string
+      tracking_number:
+        description: 可选，手动填写
+        type: string
+      weight:
+        description: 重量 KG
+        type: number
+      weight_unit:
+        description: KG, LB
+        type: string
+    required:
+    - carrier_code
+    - order_id
+    type: object
+  dto.CreateLabelRequest:
+    properties:
+      carrier_code:
+        type: string
+      order_id:
+        type: integer
+      service_code:
+        type: string
+    required:
+    - carrier_code
+    - order_id
+    - service_code
+    type: object
+  dto.CreateProductReq:
+    properties:
+      description:
+        type: string
+      image_ids:
+        description: 图片 (已上传到 Etsy 的 image_id)
+        items:
+          type: integer
+        type: array
+      is_personalizable:
+        description: 定制选项
+        type: boolean
+      is_supply:
+        type: boolean
+      is_taxable:
+        type: boolean
+      item_dimensions_unit:
+        description: in, ft, mm, cm, m
+        type: string
+      item_height:
+        type: number
+      item_length:
+        type: number
+      item_weight:
+        description: 物理属性
+        type: number
+      item_weight_unit:
+        description: oz, lb, g, kg
+        type: string
+      item_width:
+        type: number
+      listing_type:
+        description: 其他
+        type: string
+      materials:
+        items:
+          type: string
+        maxItems: 13
+        type: array
+      personalization_char_count_max:
+        type: integer
+      personalization_instructions:
+        type: string
+      personalization_is_required:
+        type: boolean
+      price:
+        description: 价格与库存
+        type: number
+      quantity:
+        minimum: 1
+        type: integer
+      return_policy_id:
+        type: integer
+      shipping_profile_id:
+        type: integer
+      shop_id:
+        type: integer
+      shop_section_id:
+        type: integer
+      should_auto_renew:
+        type: boolean
+      source_material:
+        description: AI 生成来源
+        type: string
+      styles:
+        items:
+          type: string
+        maxItems: 2
+        type: array
+      tags:
+        items:
+          type: string
+        maxItems: 13
+        type: array
+      taxonomy_id:
+        description: 分类与运费
+        type: integer
+      title:
+        description: 基础信息
+        maxLength: 140
+        type: string
+      when_made:
+        description: made_to_order, 2020_2024, ...
+        type: string
+      who_made:
+        description: Etsy 必填
+        type: string
+    required:
+    - description
+    - price
+    - quantity
+    - shipping_profile_id
+    - shop_id
+    - taxonomy_id
+    - title
+    type: object
+  dto.CreateProxyReq:
+    properties:
+      ip:
+        type: string
+      password:
+        type: string
+      port:
+        type: string
+      protocol:
+        description: 协议限制校验
+        enum:
+        - http
+        - https
+        - socks5
+        type: string
+      region:
+        description: 如 "US"
+        type: string
+      username:
+        type: string
+    required:
+    - ip
+    - port
+    - region
+    type: object
+  dto.CreateTrackerRequest:
+    properties:
+      carrier_name:
+        type: string
+      metadata:
+        additionalProperties:
+          type: string
+        type: object
+      reference:
+        type: string
+      tracking_number:
+        type: string
+    type: object
+  dto.DraftDetailResponse:
+    properties:
+      ai_result:
+        $ref: '#/definitions/dto.AIGenerateResult'
+      products:
+        items:
+          $ref: '#/definitions/dto.DraftProductVO'
+        type: array
+      source_product:
+        $ref: '#/definitions/dto.ScrapedProductVO'
+      task:
+        $ref: '#/definitions/dto.DraftTaskVO'
+    type: object
+  dto.DraftProductVO:
+    properties:
+      currency_code:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      listing_id:
+        type: integer
+      price:
+        type: number
+      quantity:
+        type: integer
+      return_policy_id:
+        type: integer
+      selected_images:
+        items:
+          type: string
+        type: array
+      shipping_profile_id:
+        type: integer
+      shop_id:
+        type: integer
+      shop_name:
+        type: string
+      status:
+        type: string
+      sync_error:
+        type: string
+      sync_status:
+        type: integer
+      tags:
+        items:
+          type: string
+        type: array
+      taxonomy_id:
+        type: integer
+      title:
+        type: string
+    type: object
+  dto.DraftTaskVO:
+    properties:
+      ai_status:
+        type: string
+      created_at:
+        type: string
+      error_message:
+        type: string
+      id:
+        type: integer
+      image_count:
+        type: integer
+      item_id:
+        type: string
+      platform:
+        type: string
+      source_url:
+        type: string
+      status:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  dto.Parcel:
+    properties:
+      dimension_unit:
+        description: CM, IN
+        type: string
+      height:
+        type: number
+      length:
+        type: number
+      weight:
+        type: number
+      weight_unit:
+        description: KG, LB
+        type: string
+      width:
+        type: number
+    type: object
+  dto.PlatformInfo:
+    properties:
+      code:
+        type: string
+      name:
+        type: string
+      url_patterns:
+        items:
+          type: string
+        type: array
+    type: object
+  dto.ProductImageResp:
+    properties:
+      alt_text:
+        type: string
+      etsy_image_id:
+        type: integer
+      height:
+        type: integer
+      id:
+        type: integer
+      local_path:
+        type: string
+      rank:
+        type: integer
+      url:
+        type: string
+      width:
+        type: integer
+    type: object
+  dto.ProductListResp:
+    properties:
+      code:
+        type: integer
+      data:
+        items:
+          $ref: '#/definitions/dto.ProductResp'
+        type: array
+      message:
+        type: string
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  dto.ProductResp:
+    properties:
+      created_at:
+        description: 时间
+        type: string
+      currency_code:
+        type: string
+      description:
+        type: string
+      edit_status:
+        type: integer
+      id:
+        type: integer
+      images:
+        description: 关联
+        items:
+          $ref: '#/definitions/dto.ProductImageResp'
+        type: array
+      is_supply:
+        type: boolean
+      item_dimensions_unit:
+        type: string
+      item_height:
+        type: number
+      item_length:
+        type: number
+      item_weight:
+        description: 物理属性
+        type: number
+      item_weight_unit:
+        type: string
+      item_width:
+        type: number
+      listing_id:
+        type: integer
+      materials:
+        items:
+          type: string
+        type: array
+      num_favorers:
+        type: integer
+      price:
+        description: 价格
+        type: number
+      quantity:
+        type: integer
+      return_policy_id:
+        type: integer
+      shipping_profile_id:
+        type: integer
+      shop_id:
+        type: integer
+      shop_section_id:
+        type: integer
+      state:
+        description: 状态
+        type: string
+      styles:
+        items:
+          type: string
+        type: array
+      sync_error:
+        type: string
+      sync_status:
+        type: integer
+      tags:
+        items:
+          type: string
+        type: array
+      taxonomy_id:
+        description: 分类
+        type: integer
+      title:
+        description: 基础信息
+        type: string
+      updated_at:
+        type: string
+      url:
+        type: string
+      variants:
+        items:
+          $ref: '#/definitions/dto.ProductVariantResp'
+        type: array
+      views:
+        description: 统计
+        type: integer
+      when_made:
+        type: string
+      who_made:
+        description: Etsy 必填
+        type: string
+    type: object
+  dto.ProductStatsResp:
+    properties:
+      by_state:
+        additionalProperties:
+          format: int64
+          type: integer
+        type: object
+      by_sync:
+        additionalProperties:
+          format: int64
+          type: integer
+        type: object
+      shop_id:
+        type: integer
+      total:
+        type: integer
+    type: object
+  dto.ProductVariantResp:
+    properties:
+      etsy_offering_id:
+        type: integer
+      etsy_product_id:
+        type: integer
+      etsy_sku:
+        type: string
+      id:
+        type: integer
+      is_enabled:
+        type: boolean
+      local_sku:
+        type: string
+      price:
+        type: number
+      property_values:
+        additionalProperties: true
+        type: object
+      quantity:
+        type: integer
+    type: object
+  dto.ProxyResp:
+    properties:
+      bound_developers:
+        items:
+          $ref: '#/definitions/dto.BoundDeveloperItem'
+        type: array
+      bound_shops:
+        description: |-
+          具体的绑定列表 (前端展开详情时用)
+          使用精简结构体，防止循环嵌套过深
+        items:
+          $ref: '#/definitions/dto.BoundShopItem'
+        type: array
+      capacity:
+        type: integer
+      created_at:
+        description: 建议转为时间戳返回，前端格式化
+        type: integer
+      created_by:
+        description: '--- 审计信息 ---'
+        type: integer
+      created_by_name:
+        description: 需要 Service 层填充名字
+        type: string
+      developer_count:
+        type: integer
+      failure_count:
+        type: integer
+      id:
+        type: integer
+      ip:
+        type: string
+      is_active:
+        type: boolean
+      last_check_time:
+        type: integer
+      password:
+        type: string
+      port:
+        type: string
+      protocol:
+        type: string
+      region:
+        type: string
+      shop_count:
+        description: |-
+          --- 核心业务：绑定关系展示 ---
+          界面上直观看到：这个代理下挂了多少个店，多少个号
+        type: integer
+      status:
+        type: integer
+      username:
+        type: string
+    type: object
+  dto.RateRequest:
+    properties:
+      carrier_ids:
+        items:
+          type: string
+        type: array
+      parcels:
+        items:
+          $ref: '#/definitions/dto.Parcel'
+        type: array
+      recipient:
+        $ref: '#/definitions/dto.Address'
+      services:
+        items:
+          type: string
+        type: array
+      shipper:
+        $ref: '#/definitions/dto.Address'
+    type: object
+  dto.RegenerateImagesRequest:
+    properties:
+      count:
+        type: integer
+      group_index:
+        type: integer
+      style_hint:
+        type: string
+    type: object
+  dto.ReturnPolicyCreateReq:
+    properties:
+      accepts_exchanges:
+        type: boolean
+      accepts_returns:
+        type: boolean
+      return_deadline:
+        minimum: 0
+        type: integer
+      shop_id:
+        type: integer
+    required:
+    - shop_id
+    type: object
+  dto.ReturnPolicyListResp:
+    properties:
+      list:
+        items:
+          $ref: '#/definitions/dto.ReturnPolicyResp'
+        type: array
+      total:
+        type: integer
+    type: object
+  dto.ReturnPolicyResp:
+    properties:
+      accepts_exchanges:
+        type: boolean
+      accepts_returns:
+        type: boolean
+      created_at:
+        type: string
+      etsy_policy_id:
+        type: integer
+      etsy_synced_at:
+        type: string
+      id:
+        type: integer
+      return_deadline:
+        type: integer
+      shop_id:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  dto.ReturnPolicyUpdateReq:
+    properties:
+      accepts_exchanges:
+        type: boolean
+      accepts_returns:
+        type: boolean
+      return_deadline:
+        minimum: 0
+        type: integer
+    type: object
+  dto.ScrapedProductVO:
+    properties:
+      attributes:
+        items:
+          $ref: '#/definitions/dto.Attr'
+        type: array
+      currency:
+        type: string
+      description:
+        type: string
+      images:
+        items:
+          type: string
+        type: array
+      item_id:
+        type: string
+      platform:
+        type: string
+      price:
+        type: number
+      title:
+        type: string
+    type: object
+  dto.ShippingDestinationCreateReq:
+    properties:
+      currency_code:
+        type: string
+      delivery_days_max:
+        type: integer
+      delivery_days_min:
+        minimum: 0
+        type: integer
+      destination_country_iso:
+        type: string
+      destination_region:
+        type: string
+      mail_class:
+        type: string
+      primary_cost:
+        minimum: 0
+        type: integer
+      secondary_cost:
+        minimum: 0
+        type: integer
+      shipping_carrier_id:
+        type: integer
+      shipping_profile_id:
+        type: integer
+    required:
+    - currency_code
+    - destination_country_iso
+    - shipping_profile_id
+    type: object
+  dto.ShippingDestinationResp:
+    properties:
+      created_at:
+        type: string
+      currency_code:
+        type: string
+      delivery_days_max:
+        type: integer
+      delivery_days_min:
+        type: integer
+      destination_country_iso:
+        type: string
+      destination_region:
+        type: string
+      etsy_destination_id:
+        type: integer
+      id:
+        type: integer
+      mail_class:
+        type: string
+      primary_cost:
+        type: integer
+      secondary_cost:
+        type: integer
+      shipping_carrier_id:
+        type: integer
+      shipping_profile_id:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  dto.ShippingDestinationUpdateReq:
+    properties:
+      currency_code:
+        type: string
+      delivery_days_max:
+        type: integer
+      delivery_days_min:
+        type: integer
+      destination_country_iso:
+        type: string
+      destination_region:
+        type: string
+      mail_class:
+        type: string
+      primary_cost:
+        minimum: 0
+        type: integer
+      secondary_cost:
+        minimum: 0
+        type: integer
+      shipping_carrier_id:
+        type: integer
+    type: object
+  dto.ShippingProfileCreateReq:
+    properties:
+      origin_country_iso:
+        type: string
+      origin_postal_code:
+        type: string
+      processing_days_max:
+        type: integer
+      processing_days_min:
+        minimum: 1
+        type: integer
+      shop_id:
+        type: integer
+      title:
+        maxLength: 255
+        type: string
+    required:
+    - origin_country_iso
+    - shop_id
+    - title
+    type: object
+  dto.ShippingProfileDetailResp:
+    properties:
+      created_at:
+        type: string
+      destinations:
+        items:
+          $ref: '#/definitions/dto.ShippingDestinationResp'
+        type: array
+      etsy_profile_id:
+        type: integer
+      etsy_synced_at:
+        type: string
+      id:
+        type: integer
+      origin_country_iso:
+        type: string
+      origin_postal_code:
+        type: string
+      processing_days_max:
+        type: integer
+      processing_days_min:
+        type: integer
+      shop_id:
+        type: integer
+      title:
+        type: string
+      updated_at:
+        type: string
+      upgrades:
+        items:
+          $ref: '#/definitions/dto.ShippingUpgradeResp'
+        type: array
+    type: object
+  dto.ShippingProfileListResp:
+    properties:
+      list:
+        items:
+          $ref: '#/definitions/dto.ShippingProfileResp'
+        type: array
+      total:
+        type: integer
+    type: object
+  dto.ShippingProfileResp:
+    properties:
+      created_at:
+        type: string
+      etsy_profile_id:
+        type: integer
+      etsy_synced_at:
+        type: string
+      id:
+        type: integer
+      origin_country_iso:
+        type: string
+      origin_postal_code:
+        type: string
+      processing_days_max:
+        type: integer
+      processing_days_min:
+        type: integer
+      shop_id:
+        type: integer
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  dto.ShippingProfileUpdateReq:
+    properties:
+      origin_country_iso:
+        type: string
+      origin_postal_code:
+        type: string
+      processing_days_max:
+        type: integer
+      processing_days_min:
+        type: integer
+      title:
+        maxLength: 255
+        type: string
+    type: object
+  dto.ShippingUpgradeCreateReq:
+    properties:
+      currency_code:
+        type: string
+      delivery_days_max:
+        type: integer
+      delivery_days_min:
+        minimum: 0
+        type: integer
+      mail_class:
+        type: string
+      price:
+        minimum: 0
+        type: integer
+      secondary_cost:
+        minimum: 0
+        type: integer
+      shipping_carrier_id:
+        type: integer
+      shipping_profile_id:
+        type: integer
+      type:
+        enum:
+        - 0
+        - 1
+        type: integer
+      upgrade_name:
+        maxLength: 100
+        type: string
+    required:
+    - currency_code
+    - shipping_profile_id
+    - upgrade_name
+    type: object
+  dto.ShippingUpgradeResp:
+    properties:
+      created_at:
+        type: string
+      currency_code:
+        type: string
+      delivery_days_max:
+        type: integer
+      delivery_days_min:
+        type: integer
+      etsy_upgrade_id:
+        type: integer
+      id:
+        type: integer
+      mail_class:
+        type: string
+      price:
+        type: integer
+      secondary_cost:
+        type: integer
+      shipping_carrier_id:
+        type: integer
+      shipping_profile_id:
+        type: integer
+      type:
+        type: integer
+      type_text:
+        type: string
+      updated_at:
+        type: string
+      upgrade_name:
+        type: string
+    type: object
+  dto.ShippingUpgradeUpdateReq:
+    properties:
+      currency_code:
+        type: string
+      delivery_days_max:
+        type: integer
+      delivery_days_min:
+        type: integer
+      mail_class:
+        type: string
+      price:
+        minimum: 0
+        type: integer
+      secondary_cost:
+        minimum: 0
+        type: integer
+      shipping_carrier_id:
+        type: integer
+      type:
+        enum:
+        - 0
+        - 1
+        type: integer
+      upgrade_name:
+        maxLength: 100
+        type: string
+    type: object
+  dto.ShopDetailResp:
+    properties:
+      announcement:
+        type: string
+      created_at:
+        type: string
+      currency_code:
+        type: string
+      developer_id:
+        type: integer
+      developer_name:
+        type: string
+      digital_sale_message:
+        type: string
+      etsy_shop_id:
+        type: integer
+      etsy_synced_at:
+        type: string
+      etsy_user_id:
+        type: integer
+      id:
+        type: integer
+      listing_active_count:
+        type: integer
+      proxy_id:
+        description: 关联信息
+        type: integer
+      proxy_ip:
+        type: string
+      proxy_region:
+        type: string
+      return_policies:
+        items:
+          $ref: '#/definitions/dto.ReturnPolicyResp'
+        type: array
+      review_average:
+        type: number
+      review_count:
+        type: integer
+      sale_message:
+        type: string
+      sections:
+        items:
+          $ref: '#/definitions/dto.ShopSectionResp'
+        type: array
+      shipping_profiles:
+        items:
+          $ref: '#/definitions/dto.ShippingProfileResp'
+        type: array
+      shop_name:
+        type: string
+      status:
+        type: integer
+      status_text:
+        type: string
+      title:
+        type: string
+      token_status:
+        type: string
+      transaction_sold_count:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  dto.ShopListResp:
+    properties:
+      list:
+        items:
+          $ref: '#/definitions/dto.ShopResp'
+        type: array
+      total:
+        type: integer
+    type: object
+  dto.ShopResp:
+    properties:
+      announcement:
+        type: string
+      created_at:
+        type: string
+      currency_code:
+        type: string
+      developer_id:
+        type: integer
+      developer_name:
+        type: string
+      digital_sale_message:
+        type: string
+      etsy_shop_id:
+        type: integer
+      etsy_synced_at:
+        type: string
+      etsy_user_id:
+        type: integer
+      id:
+        type: integer
+      listing_active_count:
+        type: integer
+      proxy_id:
+        description: 关联信息
+        type: integer
+      proxy_ip:
+        type: string
+      proxy_region:
+        type: string
+      review_average:
+        type: number
+      review_count:
+        type: integer
+      sale_message:
+        type: string
+      shop_name:
+        type: string
+      status:
+        type: integer
+      status_text:
+        type: string
+      title:
+        type: string
+      token_status:
+        type: string
+      transaction_sold_count:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  dto.ShopSectionCreateReq:
+    properties:
+      shop_id:
+        type: integer
+      title:
+        maxLength: 255
+        type: string
+    required:
+    - shop_id
+    - title
+    type: object
+  dto.ShopSectionResp:
+    properties:
+      active_listing_count:
+        type: integer
+      created_at:
+        type: string
+      etsy_section_id:
+        type: integer
+      etsy_synced_at:
+        type: string
+      id:
+        type: integer
+      rank:
+        type: integer
+      shop_id:
+        type: integer
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  dto.ShopSectionUpdateReq:
+    properties:
+      rank:
+        type: integer
+      title:
+        maxLength: 255
+        type: string
+    required:
+    - title
+    type: object
+  dto.ShopSyncResp:
+    properties:
+      message:
+        type: string
+      next_sync_time:
+        type: string
+      success:
+        type: boolean
+      synced_at:
+        type: string
+    type: object
+  dto.ShopUpdateToEtsyReq:
+    properties:
+      announcement:
+        type: string
+      digital_sale_message:
+        type: string
+      sale_message:
+        type: string
+      title:
+        type: string
+    type: object
+  dto.SupportedPlatformsResponse:
+    properties:
+      platforms:
+        items:
+          $ref: '#/definitions/dto.PlatformInfo'
+        type: array
+    type: object
+  dto.SyncOrdersRequest:
+    properties:
+      force_sync:
+        description: 强制全量同步
+        type: boolean
+      max_created:
+        type: string
+      min_created:
+        description: Unix timestamp
+        type: string
+      shop_id:
+        type: integer
+    required:
+    - shop_id
+    type: object
+  dto.UpdateDevStatusReq:
+    properties:
+      status:
+        description: 0:Init, 1:Active, 2:Banned
+        enum:
+        - 0
+        - 1
+        - 2
+        type: integer
+    type: object
+  dto.UpdateDeveloperReq:
+    properties:
+      api_key:
+        description: API 凭证
+        type: string
+      login_email:
+        description: 登录邮箱
+        type: string
+      login_pwd:
+        description: 登录密码
+        type: string
+      name:
+        description: 备注名称
+        maxLength: 50
+        type: string
+      shared_secret:
+        description: Shared Secret
+        type: string
+    type: object
+  dto.UpdateDraftProductRequest:
+    properties:
+      description:
+        type: string
+      price:
+        type: number
+      quantity:
+        type: integer
+      selected_images:
+        items:
+          type: string
+        type: array
+      shipping_profile_id:
+        type: integer
+      tags:
+        items:
+          type: string
+        type: array
+      taxonomy_id:
+        type: integer
+      title:
+        type: string
+    type: object
+  dto.UpdateOrderNoteRequest:
+    properties:
+      message_from_seller:
+        type: string
+    type: object
+  dto.UpdateOrderStatusRequest:
+    properties:
+      status:
+        enum:
+        - pending
+        - processing
+        - shipped
+        - delivered
+        - canceled
+        type: string
+    required:
+    - status
+    type: object
+  dto.UpdateProductReq:
+    properties:
+      description:
+        type: string
+      id:
+        type: integer
+      is_personalizable:
+        type: boolean
+      is_supply:
+        type: boolean
+      is_taxable:
+        type: boolean
+      item_dimensions_unit:
+        type: string
+      item_height:
+        type: number
+      item_length:
+        type: number
+      item_weight:
+        type: number
+      item_weight_unit:
+        type: string
+      item_width:
+        type: number
+      materials:
+        items:
+          type: string
+        type: array
+      personalization_char_count_max:
+        type: integer
+      personalization_instructions:
+        type: string
+      personalization_is_required:
+        type: boolean
+      price:
+        type: number
+      quantity:
+        type: integer
+      return_policy_id:
+        type: integer
+      shipping_profile_id:
+        type: integer
+      shop_section_id:
+        type: integer
+      should_auto_renew:
+        type: boolean
+      styles:
+        items:
+          type: string
+        type: array
+      tags:
+        items:
+          type: string
+        type: array
+      taxonomy_id:
+        type: integer
+      title:
+        type: string
+      when_made:
+        type: string
+      who_made:
+        type: string
+    required:
+    - id
+    type: object
+  dto.UpdateProxyReq:
+    properties:
+      id:
+        description: 更新必传 ID
+        type: integer
+      ip:
+        type: string
+      password:
+        type: string
+      port:
+        type: string
+      protocol:
+        enum:
+        - http
+        - https
+        - socks5
+        type: string
+      region:
+        type: string
+      status:
+        enum:
+        - 1
+        - 2
+        - 3
+        - 4
+        type: integer
+      username:
+        type: string
+    required:
+    - id
     type: object
 info:
   contact: {}
 paths:
-  /api/auth/callback:
+  /api/developers:
+    get:
+      consumes:
+      - application/json
+      description: 分页查询开发者账号，支持按名称和状态筛选
+      parameters:
+      - description: 页码 (默认1)
+        in: query
+        name: page
+        type: integer
+      - description: 每页数量 (默认20)
+        in: query
+        name: page_size
+        type: integer
+      - description: 名称模糊搜索
+        in: query
+        name: name
+        type: string
+      - description: 状态 (0:未配置 1:正常 2:封禁，-1或不传表示全部)
+        in: query
+        name: status
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: data + total + page
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取开发者账号列表
+      tags:
+      - Developer (开发者账号)
+    post:
+      consumes:
+      - application/json
+      description: 录入 Etsy 开发者账号，自动生成防关联 CallbackURL
+      parameters:
+      - description: 创建参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateDeveloperReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: callback_url + 管理页地址
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 创建开发者账号
+      tags:
+      - Developer (开发者账号)
+  /api/developers/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 软删除开发者账号，同时解绑所有关联店铺
+      parameters:
+      - description: 开发者账号 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'message: success'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: ID 格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 删除失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 删除开发者账号
+      tags:
+      - Developer (开发者账号)
+    get:
+      consumes:
+      - application/json
+      description: 根据 ID 获取单个开发者账号详细信息
+      parameters:
+      - description: 开发者账号 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'data: DeveloperResp'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID 格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 查询失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取开发者账号详情
+      tags:
+      - Developer (开发者账号)
+    put:
+      consumes:
+      - application/json
+      description: 更新开发者账号的备注名称、登录密码或 SharedSecret
+      parameters:
+      - description: 开发者账号 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateDeveloperReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'message: success'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 更新失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 更新开发者账号信息
+      tags:
+      - Developer (开发者账号)
+  /api/developers/{id}/ping:
+    post:
+      consumes:
+      - application/json
+      description: 通过代理请求 Etsy Ping 接口，验证 API Key 是否有效
+      parameters:
+      - description: 开发者账号 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success + latency_ms
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID 格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 测试失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 测试 API Key 连通性
+      tags:
+      - Developer (开发者账号)
+  /api/developers/{id}/status:
+    patch:
+      consumes:
+      - application/json
+      description: 变更开发者账号状态（启用/停用/封禁）
+      parameters:
+      - description: 开发者账号 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 状态参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateDevStatusReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'message: success'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 更新失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 更新开发者账号状态
+      tags:
+      - Developer (开发者账号)
+  /api/drafts:
+    get:
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: page_size
+        type: integer
+      - description: 状态筛选
+        in: query
+        name: status
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 获取用户的草稿任务列表
+      tags:
+      - Draft
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 创建请求
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateDraftRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.CreateDraftResult'
+      summary: 提交URL创建草稿任务
+      tags:
+      - Draft
+  /api/drafts/{task_id}:
+    get:
+      parameters:
+      - description: 任务ID
+        in: path
+        name: task_id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.DraftDetailResponse'
+      summary: 获取草稿任务详情
+      tags:
+      - Draft
+  /api/drafts/{task_id}/confirm-all:
+    post:
+      parameters:
+      - description: 任务ID
+        in: path
+        name: task_id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 确认任务下所有草稿商品
+      tags:
+      - Draft
+  /api/drafts/{task_id}/regenerate-images:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 任务ID
+        in: path
+        name: task_id
+        required: true
+        type: integer
+      - description: 生成参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.RegenerateImagesRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 重新生成指定组的图片
+      tags:
+      - Draft
+  /api/drafts/{task_id}/stream:
+    get:
+      parameters:
+      - description: 任务ID
+        in: path
+        name: task_id
+        required: true
+        type: integer
+      produces:
+      - text/event-stream
+      responses: {}
+      summary: SSE 实时推送任务进度
+      tags:
+      - Draft
+  /api/drafts/platforms:
+    get:
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SupportedPlatformsResponse'
+      summary: 获取支持的来源平台
+      tags:
+      - Draft
+  /api/drafts/products/{product_id}:
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: 草稿商品ID
+        in: path
+        name: product_id
+        required: true
+        type: integer
+      - description: 更新内容
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateDraftProductRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 更新草稿商品信息
+      tags:
+      - Draft
+  /api/drafts/products/{product_id}/confirm:
+    post:
+      parameters:
+      - description: 草稿商品ID
+        in: path
+        name: product_id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 确认草稿商品，加入提交队列
+      tags:
+      - Draft
+  /api/karrio/connections:
+    get:
+      description: 获取已配置的所有物流商连接
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"data": [], "total": 0}'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取物流商连接列表
+      tags:
+      - Karrio (物流网关)
+    post:
+      consumes:
+      - application/json
+      description: 添加新的物流商账号连接（如 FedEx、UPS 等）
+      parameters:
+      - description: 连接参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateConnectionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: '{"data": {}, "message": "物流商连接创建成功"}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 创建物流商连接
+      tags:
+      - Karrio (物流网关)
+  /api/karrio/connections/{id}:
+    delete:
+      description: 移除指定的物流商账号连接
+      parameters:
+      - description: 连接ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "物流商连接已删除"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 删除物流商连接
+      tags:
+      - Karrio (物流网关)
+  /api/karrio/ping:
+    get:
+      description: 检查 Karrio 物流网关服务是否可用
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"status": "healthy"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "503":
+          description: 服务不可用
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 检查 Karrio 服务状态
+      tags:
+      - Karrio (物流网关)
+  /api/karrio/rates:
+    post:
+      consumes:
+      - application/json
+      description: 根据包裹信息获取多个物流商的运费报价
+      parameters:
+      - description: 报价请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.RateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"data": []}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取运费报价
+      tags:
+      - Karrio (物流网关)
+  /api/karrio/shipments/{id}:
+    get:
+      description: 获取 Karrio 系统中的运单详细信息
+      parameters:
+      - description: 运单ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"data": {}}'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: 运单不存在
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取 Karrio 运单详情
+      tags:
+      - Karrio (物流网关)
+  /api/karrio/shipments/{id}/cancel:
+    post:
+      description: 取消 Karrio 系统中的运单
+      parameters:
+      - description: 运单ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "运单已取消"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: 取消失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 取消 Karrio 运单
+      tags:
+      - Karrio (物流网关)
+  /api/karrio/trackers:
+    get:
+      description: 获取所有物流跟踪器，支持按状态筛选
+      parameters:
+      - description: 状态筛选
+        in: query
+        name: status
+        type: string
+      - default: 20
+        description: 每页数量
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: 偏移量
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"data": [], "total": 0}'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取跟踪器列表
+      tags:
+      - Karrio (物流网关)
+    post:
+      consumes:
+      - application/json
+      description: 为指定运单号创建物流跟踪
+      parameters:
+      - description: 跟踪参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateTrackerRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: '{"data": {}, "message": "跟踪器创建成功"}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 创建物流跟踪器
+      tags:
+      - Karrio (物流网关)
+  /api/karrio/trackers/{id}:
+    get:
+      description: 获取指定跟踪器的详细物流信息
+      parameters:
+      - description: 跟踪器ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"data": {}}'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: 跟踪器不存在
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取跟踪器详情
+      tags:
+      - Karrio (物流网关)
+  /api/karrio/trackers/{id}/refresh:
+    post:
+      description: 手动刷新指定跟踪器的物流状态
+      parameters:
+      - description: 跟踪器ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"data": {}, "message": "跟踪状态已刷新"}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 刷新失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 刷新跟踪状态
+      tags:
+      - Karrio (物流网关)
+  /api/karrio/trackers/batch:
+    post:
+      consumes:
+      - application/json
+      description: 批量为多个运单号创建物流跟踪
+      parameters:
+      - description: 批量跟踪参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.BatchCreateTrackersRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: '{"data": [], "count": 0, "message": "批量创建成功"}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 批量创建跟踪器
+      tags:
+      - Karrio (物流网关)
+  /api/oauth/callback:
     get:
       consumes:
       - application/json
@@ -87,47 +2210,22 @@ paths:
       summary: Etsy 授权回调
       tags:
       - Auth (授权模块)
-  /api/products:
+  /api/oauth/login:
     get:
       consumes:
       - application/json
+      description: 为店铺生成授权链接，并生成 OAuth 授权跳转链接；必传参数 region
       parameters:
-      - description: 店铺 ID
+      - description: 店铺 shop ID (Database Primary Key)，初次授权时填 0
         in: query
         name: shop_id
         required: true
         type: integer
-      - default: 1
-        description: 页码 (默认1)
+      - description: 国家，必填字段
         in: query
-        name: page
-        type: integer
-      - default: 20
-        description: 每页数量 (默认20)
-        in: query
-        name: page_size
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/etsy_dev_v1_202512_core_view.ProductListResp'
-      summary: 获取指定店铺的商品列表
-      tags:
-      - Product
-  /auth/login:
-    get:
-      consumes:
-      - application/json
-      description: 为指定的预置店铺生成授权链接，并生成 OAuth 授权跳转链接
-      parameters:
-      - description: 预置的店铺 ID (Database Primary Key)
-        in: query
-        name: shop_id
+        name: region
         required: true
-        type: integer
+        type: string
       produces:
       - application/json
       responses:
@@ -140,6 +2238,2004 @@ paths:
           schema:
             type: string
       summary: 获取 Etsy 授权链接
+      tags:
+      - Auth (授权模块)
+  /api/orders:
+    get:
+      consumes:
+      - application/json
+      description: 分页查询订单，支持按店铺、状态、关键词、日期范围筛选
+      parameters:
+      - description: 店铺ID
+        in: query
+        name: shop_id
+        type: integer
+      - description: 订单状态
+        in: query
+        name: status
+        type: string
+      - description: 关键词搜索（买家名/订单号）
+        in: query
+        name: keyword
+        type: string
+      - description: 开始日期 (YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: 结束日期 (YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"data": dto.ListOrdersResponse}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取订单列表
+      tags:
+      - Order (订单管理)
+  /api/orders/{id}:
+    get:
+      description: 根据订单ID获取完整订单信息，包含订单项、收货地址、发货信息
+      parameters:
+      - description: 订单ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"data": dto.OrderDetailResponse}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: 订单不存在
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取订单详情
+      tags:
+      - Order (订单管理)
+  /api/orders/{id}/note:
+    patch:
+      consumes:
+      - application/json
+      description: 更新卖家对订单的备注信息
+      parameters:
+      - description: 订单ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 备注内容
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateOrderNoteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "备注已更新"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 更新订单备注
+      tags:
+      - Order (订单管理)
+  /api/orders/{id}/shipment:
+    get:
+      description: 获取指定订单的发货记录详情
+      parameters:
+      - description: 订单ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"data": dto.ShipmentVO}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: 发货记录不存在
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "503":
+          description: 发货服务未配置
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取订单发货信息
+      tags:
+      - Order (订单管理)
+  /api/orders/{id}/status:
+    patch:
+      consumes:
+      - application/json
+      description: 更新订单的处理状态（如标记为已处理、已取消等）
+      parameters:
+      - description: 订单ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 状态参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateOrderStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "状态已更新"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 更新订单状态
+      tags:
+      - Order (订单管理)
+  /api/orders/{order_id}/shipment:
+    get:
+      description: 获取指定订单的发货记录
+      parameters:
+      - description: 订单ID
+        in: path
+        name: order_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"data": dto.EtsyShipmentResponse}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: 发货记录不存在
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 根据订单ID获取发货信息
+      tags:
+      - Shipment (发货管理)
+  /api/orders/stats:
+    get:
+      description: 获取订单统计数据（订单数、金额、状态分布等）
+      parameters:
+      - description: 店铺ID
+        in: query
+        name: shop_id
+        type: integer
+      - description: 开始日期 (YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: 结束日期 (YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"data": dto.OrderStatsResponse}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 查询失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取订单统计
+      tags:
+      - Order (订单管理)
+  /api/orders/sync:
+    post:
+      consumes:
+      - application/json
+      description: 从 Etsy 拉取订单数据并同步到本地数据库
+      parameters:
+      - description: 同步参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SyncOrdersRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"data": {}, "message": "订单同步完成"}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 同步失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 同步 Etsy 订单
+      tags:
+      - Order (订单管理)
+  /api/products:
+    get:
+      parameters:
+      - description: 店铺ID
+        in: query
+        name: shop_id
+        required: true
+        type: integer
+      - description: 状态筛选
+        in: query
+        name: state
+        type: string
+      - description: 标题搜索
+        in: query
+        name: keyword
+        type: string
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: page_size
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProductListResp'
+      summary: 获取指定店铺的商品列表
+      tags:
+      - Product
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 商品信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateProductReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ProductResp'
+      summary: 创建商品并推送到 Etsy
+      tags:
+      - Product
+  /api/products/{id}:
+    delete:
+      parameters:
+      - description: 商品ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 删除商品 (同时删除 Etsy 远程)
+      tags:
+      - Product
+    get:
+      parameters:
+      - description: 商品ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProductResp'
+      summary: 获取单个商品详情
+      tags:
+      - Product
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: 商品ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新内容
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateProductReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 更新商品信息并同步到 Etsy
+      tags:
+      - Product
+  /api/products/{id}/activate:
+    post:
+      parameters:
+      - description: 商品ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 将商品状态改为 active
+      tags:
+      - Product
+  /api/products/{id}/approve:
+    post:
+      parameters:
+      - description: 商品ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 审核通过 AI 生成的草稿
+      tags:
+      - Product
+  /api/products/{id}/deactivate:
+    post:
+      parameters:
+      - description: 商品ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 将商品状态改为 inactive
+      tags:
+      - Product
+  /api/products/{id}/images:
+    post:
+      consumes:
+      - multipart/form-data
+      parameters:
+      - description: 商品ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 图片文件
+        in: formData
+        name: image
+        required: true
+        type: file
+      - default: 1
+        description: 排序
+        in: formData
+        name: rank
+        type: integer
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ProductImageResp'
+      summary: 上传图片到 Etsy
+      tags:
+      - Product
+  /api/products/ai/generate:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 生成参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AIGenerateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProductResp'
+      summary: 调用 AI 生成商品草稿
+      tags:
+      - Product
+  /api/products/stats:
+    get:
+      parameters:
+      - description: 店铺ID
+        in: query
+        name: shop_id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProductStatsResp'
+      summary: 获取店铺商品统计信息
+      tags:
+      - Product
+  /api/products/sync:
+    post:
+      parameters:
+      - description: 店铺ID
+        in: query
+        name: shop_id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 从 Etsy 全量同步商品
+      tags:
+      - Product
+  /api/proxies:
+    get:
+      consumes:
+      - application/json
+      description: 获取代理列表，支持按 IP、地区、状态过滤。列表项只包含关联数量，不包含详情。
+      parameters:
+      - description: 页码 (默认1)
+        in: query
+        name: page
+        type: integer
+      - description: 每页数量 (默认20)
+        in: query
+        name: page_size
+        type: integer
+      - description: IP 模糊搜索
+        in: query
+        name: ip
+        type: string
+      - description: 地区代码 (如 US)
+        in: query
+        name: region
+        type: string
+      - description: 状态 (1:正常 2:过期...)
+        in: query
+        name: status
+        type: integer
+      - description: 容量 (1:独享 2:共享)
+        in: query
+        name: capacity
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"data": [dto.ProxyResp], "total": 100, "page": 1}'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取代理分页列表
+      tags:
+      - Proxy
+    post:
+      consumes:
+      - application/json
+      description: 录入新的代理 IP，需保证 IP+Port 唯一，region 必填国家代码
+      parameters:
+      - description: 创建参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateProxyReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "success"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 创建代理 IP
+      tags:
+      - Proxy
+    put:
+      consumes:
+      - application/json
+      description: 更新代理配置或状态 (如修改容量、停用代理)
+      parameters:
+      - description: 更新参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateProxyReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "success"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 更新代理信息
+      tags:
+      - Proxy
+  /api/proxies/{id}:
+    get:
+      consumes:
+      - application/json
+      description: 根据 ID 获取代理详细信息，包含已绑定的店铺列表和开发者账号列表
+      parameters:
+      - description: 代理 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"data": dto.ProxyResp}'
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/dto.ProxyResp'
+            type: object
+        "400":
+          description: ID 格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 查询失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取代理详情 (含绑定关系)
+      tags:
+      - Proxy
+  /api/shipments:
+    get:
+      description: 分页查询发货记录，支持多条件筛选
+      parameters:
+      - description: 订单ID
+        in: query
+        name: order_id
+        type: integer
+      - description: 物流商代码
+        in: query
+        name: carrier_code
+        type: string
+      - description: 发货状态
+        in: query
+        name: status
+        type: string
+      - description: 运单号
+        in: query
+        name: tracking_number
+        type: string
+      - description: 是否已同步Etsy
+        in: query
+        name: etsy_synced
+        type: boolean
+      - description: 开始日期 (YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: 结束日期 (YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"data": dto.EtsyShipmentListResponse}'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取发货列表
+      tags:
+      - Shipment (发货管理)
+    post:
+      consumes:
+      - application/json
+      description: 为订单创建发货记录，填写物流商和运单号
+      parameters:
+      - description: 发货参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateEtsyShipmentRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: '{"data": dto.EtsyShipmentResponse, "message": "发货成功"}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 创建发货记录
+      tags:
+      - Shipment (发货管理)
+  /api/shipments/{id}:
+    get:
+      description: 根据发货记录ID获取详细信息
+      parameters:
+      - description: 发货记录ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"data": dto.EtsyShipmentResponse}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: 发货记录不存在
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取发货详情
+      tags:
+      - Shipment (发货管理)
+  /api/shipments/{id}/refresh-tracking:
+    post:
+      description: 手动刷新指定发货记录的物流轨迹
+      parameters:
+      - description: 发货记录ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"data": dto.EtsyShipmentResponse, "message": "物流信息已刷新"}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 刷新失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 刷新物流跟踪状态
+      tags:
+      - Shipment (发货管理)
+  /api/shipments/{id}/sync-etsy:
+    post:
+      description: 将发货信息同步到 Etsy 平台，更新订单的发货状态
+      parameters:
+      - description: 发货记录ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "已同步到 Etsy"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: 同步失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 同步发货信息到 Etsy
+      tags:
+      - Shipment (发货管理)
+  /api/shipments/carriers:
+    get:
+      description: 获取系统支持的所有物流商及其代码
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"data": []}'
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 获取支持的物流商列表
+      tags:
+      - Shipment (发货管理)
+  /api/shipments/with-label:
+    post:
+      consumes:
+      - application/json
+      description: 为订单创建发货，自动生成物流面单
+      parameters:
+      - description: 面单参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateLabelRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: '{"data": dto.EtsyShipmentResponse, "message": "发货成功，面单已生成"}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 创建发货并生成面单
+      tags:
+      - Shipment (发货管理)
+  /api/v1/return-policies/{id}:
+    delete:
+      description: 从 Etsy 删除退货政策
+      parameters:
+      - description: 退货政策ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "删除成功"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 删除失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 删除退货政策
+      tags:
+      - ReturnPolicy (退货政策)
+    get:
+      description: 获取退货政策的详细配置信息
+      parameters:
+      - description: 退货政策ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 退货政策详情
+          schema:
+            $ref: '#/definitions/dto.ReturnPolicyResp'
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 查询失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取退货政策详情
+      tags:
+      - ReturnPolicy (退货政策)
+    put:
+      consumes:
+      - application/json
+      description: 更新 Etsy 退货政策配置
+      parameters:
+      - description: 退货政策ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ReturnPolicyUpdateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "更新成功"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 更新失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 更新退货政策
+      tags:
+      - ReturnPolicy (退货政策)
+  /api/v1/shipping-destinations/{id}:
+    delete:
+      description: 从运费模板中移除目的地配置
+      parameters:
+      - description: 目的地ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "删除成功"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 删除失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 删除运费目的地
+      tags:
+      - ShippingProfile (运费模板)
+    put:
+      consumes:
+      - application/json
+      description: 更新运费目的地配置（运费、时效等）
+      parameters:
+      - description: 目的地ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ShippingDestinationUpdateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "更新成功"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 更新失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 更新运费目的地
+      tags:
+      - ShippingProfile (运费模板)
+  /api/v1/shipping-profiles/{id}:
+    delete:
+      description: 从 Etsy 删除运费模板
+      parameters:
+      - description: 运费模板ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "删除成功"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 删除失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 删除运费模板
+      tags:
+      - ShippingProfile (运费模板)
+    get:
+      description: 获取运费模板详细信息，包含目的地和加急选项
+      parameters:
+      - description: 运费模板ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 运费模板详情
+          schema:
+            $ref: '#/definitions/dto.ShippingProfileDetailResp'
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 查询失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取运费模板详情
+      tags:
+      - ShippingProfile (运费模板)
+    put:
+      consumes:
+      - application/json
+      description: 更新 Etsy 运费模板信息
+      parameters:
+      - description: 运费模板ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ShippingProfileUpdateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "更新成功"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 更新失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 更新运费模板
+      tags:
+      - ShippingProfile (运费模板)
+  /api/v1/shipping-profiles/{profileId}/destinations:
+    post:
+      consumes:
+      - application/json
+      description: 为运费模板添加目的地国家/地区配置
+      parameters:
+      - description: 运费模板ID
+        in: path
+        name: profileId
+        required: true
+        type: integer
+      - description: 目的地参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ShippingDestinationCreateReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 创建结果
+          schema:
+            $ref: '#/definitions/dto.ShippingDestinationResp'
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 创建失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 创建运费目的地
+      tags:
+      - ShippingProfile (运费模板)
+  /api/v1/shipping-profiles/{profileId}/upgrades:
+    post:
+      consumes:
+      - application/json
+      description: 为运费模板添加加急/快递配送选项
+      parameters:
+      - description: 运费模板ID
+        in: path
+        name: profileId
+        required: true
+        type: integer
+      - description: 加急选项参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ShippingUpgradeCreateReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 创建结果
+          schema:
+            $ref: '#/definitions/dto.ShippingUpgradeResp'
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 创建失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 创建加急配送选项
+      tags:
+      - ShippingProfile (运费模板)
+  /api/v1/shipping-upgrades/{id}:
+    delete:
+      description: 从运费模板中移除加急配送选项
+      parameters:
+      - description: 加急选项ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "删除成功"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 删除失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 删除加急配送选项
+      tags:
+      - ShippingProfile (运费模板)
+    put:
+      consumes:
+      - application/json
+      description: 更新加急配送选项的价格和时效
+      parameters:
+      - description: 加急选项ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ShippingUpgradeUpdateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "更新成功"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 更新失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 更新加急配送选项
+      tags:
+      - ShippingProfile (运费模板)
+  /api/v1/shops:
+    get:
+      consumes:
+      - application/json
+      description: 分页查询店铺，支持按名称、状态筛选
+      parameters:
+      - description: 店铺名称关键词
+        in: query
+        name: keyword
+        type: string
+      - description: 状态筛选
+        in: query
+        name: status
+        type: integer
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 店铺列表
+          schema:
+            $ref: '#/definitions/dto.ShopListResp'
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取店铺列表
+      tags:
+      - Shop (店铺管理)
+  /api/v1/shops/{id}:
+    delete:
+      description: 软删除店铺记录
+      parameters:
+      - description: 店铺ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "删除成功"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 删除失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 删除店铺
+      tags:
+      - Shop (店铺管理)
+    get:
+      description: 根据店铺ID获取详细信息，包含Token状态、关联的开发者账号等
+      parameters:
+      - description: 店铺ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 店铺详情
+          schema:
+            $ref: '#/definitions/dto.ShopDetailResp'
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 查询失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取店铺详情
+      tags:
+      - Shop (店铺管理)
+    put:
+      consumes:
+      - application/json
+      description: 更新店铺信息并同步到 Etsy 平台
+      parameters:
+      - description: 店铺ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ShopUpdateToEtsyReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "更新成功"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 更新失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 更新店铺信息
+      tags:
+      - Shop (店铺管理)
+  /api/v1/shops/{id}/resume:
+    post:
+      description: 恢复店铺，设为待授权状态等待重新授权
+      parameters:
+      - description: 店铺ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "店铺已设为待授权状态，请重新授权"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 操作失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 恢复店铺
+      tags:
+      - Shop (店铺管理)
+  /api/v1/shops/{id}/sections:
+    post:
+      consumes:
+      - application/json
+      description: 在 Etsy 创建新的店铺分区
+      parameters:
+      - description: 店铺ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 分区参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ShopSectionCreateReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 创建结果
+          schema:
+            $ref: '#/definitions/dto.ShopSectionResp'
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 创建失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 创建店铺分区
+      tags:
+      - Shop (店铺管理)
+  /api/v1/shops/{id}/sections/sync:
+    post:
+      description: 从 Etsy 同步店铺分区（Shop Section）数据
+      parameters:
+      - description: 店铺ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "分区同步成功"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 同步失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 同步店铺分区
+      tags:
+      - Shop (店铺管理)
+  /api/v1/shops/{id}/stop:
+    post:
+      description: 停用店铺，停止Token刷新和数据同步
+      parameters:
+      - description: 店铺ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "店铺已停用"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 操作失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 停用店铺
+      tags:
+      - Shop (店铺管理)
+  /api/v1/shops/{id}/sync:
+    post:
+      description: 从 Etsy 拉取最新店铺数据并更新本地记录
+      parameters:
+      - description: 店铺ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 同步结果
+          schema:
+            $ref: '#/definitions/dto.ShopSyncResp'
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 同步失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 手动同步店铺
+      tags:
+      - Shop (店铺管理)
+  /api/v1/shops/{shopId}/return-policies:
+    get:
+      description: 获取指定店铺的所有退货政策
+      parameters:
+      - description: 店铺ID
+        in: path
+        name: shopId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 退货政策列表
+          schema:
+            $ref: '#/definitions/dto.ReturnPolicyListResp'
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 查询失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取退货政策列表
+      tags:
+      - ReturnPolicy (退货政策)
+    post:
+      consumes:
+      - application/json
+      description: 在 Etsy 创建新的退货政策
+      parameters:
+      - description: 店铺ID
+        in: path
+        name: shopId
+        required: true
+        type: integer
+      - description: 政策参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ReturnPolicyCreateReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 创建结果
+          schema:
+            $ref: '#/definitions/dto.ReturnPolicyResp'
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 创建失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 创建退货政策
+      tags:
+      - ReturnPolicy (退货政策)
+  /api/v1/shops/{shopId}/return-policies/sync:
+    post:
+      description: 从 Etsy 同步店铺的退货政策数据
+      parameters:
+      - description: 店铺ID
+        in: path
+        name: shopId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "退货政策同步成功"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 同步失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 同步退货政策
+      tags:
+      - ReturnPolicy (退货政策)
+  /api/v1/shops/{shopId}/shipping-profiles:
+    get:
+      description: 获取指定店铺的所有运费模板
+      parameters:
+      - description: 店铺ID
+        in: path
+        name: shopId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 运费模板列表
+          schema:
+            $ref: '#/definitions/dto.ShippingProfileListResp'
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 查询失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取运费模板列表
+      tags:
+      - ShippingProfile (运费模板)
+    post:
+      consumes:
+      - application/json
+      description: 在 Etsy 创建新的运费模板
+      parameters:
+      - description: 店铺ID
+        in: path
+        name: shopId
+        required: true
+        type: integer
+      - description: 模板参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ShippingProfileCreateReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 创建结果
+          schema:
+            $ref: '#/definitions/dto.ShippingProfileResp'
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 创建失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 创建运费模板
+      tags:
+      - ShippingProfile (运费模板)
+  /api/v1/shops/{shopId}/shipping-profiles/sync:
+    post:
+      description: 从 Etsy 同步店铺的运费模板数据
+      parameters:
+      - description: 店铺ID
+        in: path
+        name: shopId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "运费模板同步成功"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 同步失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 同步运费模板
+      tags:
+      - ShippingProfile (运费模板)
+  /api/v1/shops/sections/{sectionId}:
+    delete:
+      description: 从 Etsy 删除店铺分区
+      parameters:
+      - description: 分区ID
+        in: path
+        name: sectionId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "删除成功"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: ID格式错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 删除失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 删除店铺分区
+      tags:
+      - Shop (店铺管理)
+    put:
+      consumes:
+      - application/json
+      description: 更新 Etsy 店铺分区标题
+      parameters:
+      - description: 分区ID
+        in: path
+        name: sectionId
+        required: true
+        type: integer
+      - description: 更新参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ShopSectionUpdateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "更新成功"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 更新失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 更新店铺分区
+      tags:
+      - Shop (店铺管理)
+  /api/webhooks/karrio/tracking:
+    post:
+      consumes:
+      - application/json
+      description: 接收 Karrio 推送的物流状态更新事件
+      parameters:
+      - description: Webhook 载荷
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"message": "processed"}'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: 处理失败
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 处理 Karrio 物流回调
+      tags:
+      - Shipment (发货管理)
+  /oauth/refresh:
+    get:
+      consumes:
+      - application/json
+      description: 手动控制刷新店铺 TOKEN
+      parameters:
+      - description: 预置的店铺 ID (Database Primary Key)
+        in: query
+        name: shop_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功消息+下一次过期时间
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 错误信息
+          schema:
+            type: string
+      summary: 刷新店铺 Token
       tags:
       - Auth (授权模块)
 swagger: "2.0"

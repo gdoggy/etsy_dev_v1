@@ -21,9 +21,8 @@ const (
 type Shop struct {
 	BaseModel // 包含 ID(int64), CreatedAt, UpdatedAt
 	// 1. 核心身份
-	// 改名为 EtsyShopID 以区分主键 ID，且与 Product 表外键保持一致
-	EtsyShopID   int64  `gorm:"uniqueIndex"` // 对应 Etsy 平台的 shop_id
-	EtsyUserID   int64  `gorm:"index"`       // 对应 Etsy 平台的 user_id
+	EtsyShopID   int64  `gorm:"index"` // 对应 Etsy 平台的 shop_id
+	EtsyUserID   int64  `gorm:"index"` // 对应 Etsy 平台的 user_id
 	ShopName     string `gorm:"size:100"`
 	Title        string `gorm:"size:255;comment:店铺标题"`
 	Announcement string `gorm:"type:text;comment:店铺公告"`
@@ -57,7 +56,7 @@ type Shop struct {
 
 	// --- 开发者账号关系 ---
 	DeveloperID int64      `gorm:"index"`
-	Developer   *Developer `gorm:"foreignKey:developerID"`
+	Developer   *Developer `gorm:"foreignKey:DeveloperID"`
 
 	// 7. API Token
 	// 周期检测 token 是否过期
@@ -74,9 +73,7 @@ type Shop struct {
 	ShopAccount *ShopAccount `gorm:"foreignKey:ShopID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 
 	// 2. 商品数据 (Has Many)
-	// 注意：这里 references 指向的是本表的 EtsyShopID，而不是主键 ID
-	// 因为 Product 表存的是 EtsyShopID
-	Products []Product `gorm:"foreignKey:ShopID;references:EtsyShopID"`
+	Products []Product `gorm:"foreignKey:ShopID"`
 
 	// 3.
 	Sections         []ShopSection     `gorm:"foreignKey:ShopID" json:"sections,omitempty"`
@@ -84,18 +81,15 @@ type Shop struct {
 	ReturnPolicies   []ReturnPolicy    `gorm:"foreignKey:ShopID" json:"return_policies,omitempty"`
 
 	// 4. 权限关联
-	// 获取该店铺的所有成员及其角色 (Has Many)
-	Memberships []ShopMember `gorm:"foreignKey:ShopID"`
-	// 获取该店铺的所有成员列表 (Many to Many, 忽略角色)
-	Members []SysUser `gorm:"many2many:shop_members;"`
+	Memberships []ShopMember `gorm:"foreignKey:ShopID"`       // Has Many
+	Members     []SysUser    `gorm:"many2many:shop_members;"` // Many to Many
 }
 
 // ShopAccount 存储店铺的登录凭证和指纹环境 (敏感表)
 type ShopAccount struct {
 	BaseModel
-	// 加上 uniqueIndex 确保 1:1 关系 (一个 Shop 只能有一条 Account 记录)
-	ShopID int64 `gorm:"uniqueIndex;not null"`
-
+	ShopID        int64  `gorm:"index;not null"`
+	Shop          *Shop  `gorm:"foreignKey:ShopID"`
 	LoginEmail    string `gorm:"size:100"`
 	LoginPwd      string `gorm:"size:255"` // 加密
 	RecoveryEmail string `gorm:"size:100"` // 辅助邮箱
@@ -127,36 +121,15 @@ type ShopSection struct {
 	EtsySyncedAt *time.Time `gorm:"comment:最后Etsy同步时间"`
 }
 
-// ShopMember 定义用户和店铺的关联关系及权限
-// GORM 自定义连接表 (Join Table)
-type ShopMember struct {
-	BaseModel
-	// 联合唯一索引
-	// 确保一个用户在一个店铺里只有一条记录
-	SysUserID int64 `gorm:"index;uniqueIndex:idx_user_shop;not null"`
-	ShopID    int64 `gorm:"index;uniqueIndex:idx_user_shop;not null"`
-
-	// 权限控制
-	// 角色: owner, manager, editor, viewer
-	Role string `gorm:"size:20;default:'viewer'"`
-
-	// 关联对象 (Belongs To)
-	SysUser *SysUser `gorm:"foreignKey:SysUserID"`
-	Shop    *Shop    `gorm:"foreignKey:ShopID"`
-}
-
 func (Shop) TableName() string {
 	return "shops"
 }
 
+// TableName todo 自动建表
 func (ShopAccount) TableName() string {
 	return "shop_accounts"
 }
 
 func (ShopSection) TableName() string {
 	return "shop_sections"
-}
-
-func (ShopMember) TableName() string {
-	return "shop_members"
 }

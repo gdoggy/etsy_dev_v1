@@ -17,8 +17,8 @@ import (
 
 // OrderSyncTask 订单同步定时任务
 type OrderSyncTask struct {
-	orderService *service.OrderService
 	shopRepo     repository.ShopRepository
+	orderService *service.OrderService
 	cron         *cron.Cron
 
 	// 并发控制
@@ -27,13 +27,16 @@ type OrderSyncTask struct {
 }
 
 // NewOrderSyncTask 创建订单同步任务
-func NewOrderSyncTask(orderService *service.OrderService, shopRepo repository.ShopRepository) *OrderSyncTask {
+func NewOrderSyncTask(
+	shopRepo repository.ShopRepository,
+	orderService *service.OrderService,
+) *OrderSyncTask {
 	return &OrderSyncTask{
-		orderService:     orderService,
 		shopRepo:         shopRepo,
+		orderService:     orderService,
 		cron:             cron.New(cron.WithSeconds()),
-		concurrencyLimit: 10,                     // 订单同步并发上限
-		sleepTime:        200 * time.Millisecond, // 协程启动间隔
+		concurrencyLimit: 10,
+		sleepTime:        200 * time.Millisecond,
 	}
 }
 
@@ -49,23 +52,23 @@ func (t *OrderSyncTask) Start() {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
-		log.Println("[OrderSyncTask] 服务启动，正在执行首次订单同步...")
+		log.Println("[OrderSyncTask] 执行首次订单同步...")
 		t.syncAllShops(ctx)
 	}()
 
-	// 定时策略：每10分钟执行
+	// 每 10 分钟执行
 	_, err := t.cron.AddFunc("0 */10 * * * *", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
 		t.syncAllShops(ctx)
 	})
-
 	if err != nil {
-		log.Fatalf("[OrderSyncTask] 无法启动定时任务: %v", err)
+		log.Printf("[OrderSyncTask] 定时任务启动失败: %v", err)
+		return
 	}
 
 	t.cron.Start()
-	log.Println("[OrderSyncTask] 订单同步任务已启动 (每10分钟)")
+	log.Println("[OrderSyncTask] 已启动 (每10分钟)")
 }
 
 // Stop 停止任务
@@ -75,11 +78,10 @@ func (t *OrderSyncTask) Stop() {
 	log.Println("[OrderSyncTask] 已停止")
 }
 
-// syncAllShops 同步所有店铺的订单（并发控制）
+// syncAllShops 同步所有店铺的订单
 func (t *OrderSyncTask) syncAllShops(ctx context.Context) {
 	log.Println("[OrderSyncTask] 开始同步订单...")
 
-	// 获取所有活跃店铺
 	shops, _, err := t.shopRepo.List(ctx, repository.ShopFilter{
 		Status:   1,
 		PageSize: 1000,
@@ -94,11 +96,9 @@ func (t *OrderSyncTask) syncAllShops(ctx context.Context) {
 		return
 	}
 
-	// 信号量控制并发
 	sem := make(chan struct{}, t.concurrencyLimit)
 	var wg sync.WaitGroup
 
-	// 统计结果
 	var (
 		totalNew     int
 		totalUpdated int
@@ -106,10 +106,10 @@ func (t *OrderSyncTask) syncAllShops(ctx context.Context) {
 		mu           sync.Mutex
 	)
 
-	log.Printf("[OrderSyncTask] 开始处理 %d 个店铺，并发上限: %d", len(shops), t.concurrencyLimit)
+	log.Printf("[OrderSyncTask] 开始处理 %d 个店铺", len(shops))
 
-	for _, shop := range shops {
-		// 检查上下文是否已取消
+	for i := range shops {
+		shop := shops[i]
 		select {
 		case <-ctx.Done():
 			log.Println("[OrderSyncTask] 任务超时停止")
@@ -118,15 +118,9 @@ func (t *OrderSyncTask) syncAllShops(ctx context.Context) {
 		default:
 		}
 
-		// 获取信号量
 		sem <- struct{}{}
 		wg.Add(1)
-
-		// 平滑波峰
 		time.Sleep(t.sleepTime)
-
-		// 避免循环变量捕获
-		currentShop := shop
 
 		go func(shopID int64, shopName string) {
 			defer wg.Done()
@@ -154,30 +148,29 @@ func (t *OrderSyncTask) syncAllShops(ctx context.Context) {
 					shopName, resp.NewOrders, resp.UpdatedOrders)
 			}
 
-			// 记录同步警告
 			for _, e := range resp.Errors {
 				log.Printf("[OrderSyncTask] 店铺 %s 警告: %s", shopName, e)
 			}
-		}(currentShop.ID, currentShop.ShopName)
+		}(shop.ID, shop.ShopName)
 	}
 
 	wg.Wait()
-	log.Printf("[OrderSyncTask] 同步完成，店铺: %d, 新增: %d, 更新: %d, 错误: %d",
+	log.Printf("[OrderSyncTask] 同步完成: 店铺 %d, 新增 %d, 更新 %d, 错误 %d",
 		len(shops), totalNew, totalUpdated, totalErrors)
 }
 
-// ==================== 手动触发接口 ====================
+// ==================== 手动触发 ====================
 
-// SyncShopOrders 手动触发单个店铺订单同步
-func (t *OrderSyncTask) SyncShopOrders(ctx context.Context, shopID int64, forceSync bool) (*dto.SyncOrdersResponse, error) {
+// SyncShopNow 立即同步单个店铺订单
+func (t *OrderSyncTask) SyncShopNow(ctx context.Context, shopID int64, forceSync bool) (*dto.SyncOrdersResponse, error) {
 	return t.orderService.SyncOrders(ctx, &dto.SyncOrdersRequest{
 		ShopID:    shopID,
 		ForceSync: forceSync,
 	})
 }
 
-// SyncAllShopsNow 立即同步所有店铺（手动触发）
-func (t *OrderSyncTask) SyncAllShopsNow() {
+// SyncAllNow 立即同步所有店铺订单
+func (t *OrderSyncTask) SyncAllNow() {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()

@@ -23,11 +23,11 @@ func NewAuthController(s *service.AuthService) *AuthController {
 // @Tags Auth (授权模块)
 // @Accept json
 // @Produce json
-// @Param shop_id query int "店铺 shop ID (Database Primary Key)，初次授权时为空"
+// @Param shop_id query int true "店铺 shop ID (Database Primary Key)，初次授权时填 0"
 // @Param region query string true "国家，必填字段"
 // @Success 200 {string} string "点击按钮手动复制链接 url"
 // @Failure 400 {string} string "错误信息"
-// @Router /oauth/login [get]
+// @Router /api/oauth/login [get]
 func (ctrl *AuthController) Login(c *gin.Context) {
 	// 1. 获取 region
 	region := c.Query("region")
@@ -37,9 +37,9 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 	}
 	// 2. 获取 shop_id
 	var shopID int64 = 0
+	var err error
 	shopIDStr := c.Query("shop_id")
 	if shopIDStr != "" {
-		var err error
 		shopID, err = strconv.ParseInt(shopIDStr, 10, 64)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "shop_id 必须是数字"})
@@ -117,7 +117,7 @@ func (ctrl *AuthController) Callback(c *gin.Context) {
 // @Param shop_id query int true "预置的店铺 ID (Database Primary Key)"
 // @Success 200 {object} map[string]interface{} "成功消息+下一次过期时间"
 // @Failure 400 {string} string "错误信息"
-// @Router /oauth/refresh [get]
+// @Router /api/oauth/refresh [get]
 func (ctrl *AuthController) RefreshToken(c *gin.Context) {
 	shopIDStr := c.Query("shop_id")
 	if shopIDStr == "" {

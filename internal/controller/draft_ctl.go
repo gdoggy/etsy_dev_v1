@@ -105,7 +105,7 @@ func (ctrl *DraftController) GetDraftDetail(c *gin.Context) {
 // @Accept json
 // @Param product_id path int true "草稿商品ID"
 // @Param body body dto.UpdateDraftProductRequest true "更新内容"
-// @Success 200 {object} gin.H
+// @Success 200 {object} map[string]interface{}
 // @Router /api/drafts/products/{product_id} [patch]
 func (ctrl *DraftController) UpdateDraftProduct(c *gin.Context) {
 	productIDStr := c.Param("product_id")
@@ -146,7 +146,7 @@ func (ctrl *DraftController) UpdateDraftProduct(c *gin.Context) {
 // @Summary 确认草稿商品，加入提交队列
 // @Tags Draft
 // @Param product_id path int true "草稿商品ID"
-// @Success 200 {object} gin.H
+// @Success 200 {object} map[string]interface{}
 // @Router /api/drafts/products/{product_id}/confirm [post]
 func (ctrl *DraftController) ConfirmDraftProduct(c *gin.Context) {
 	productIDStr := c.Param("product_id")
@@ -178,7 +178,7 @@ func (ctrl *DraftController) ConfirmDraftProduct(c *gin.Context) {
 // @Summary 确认任务下所有草稿商品
 // @Tags Draft
 // @Param task_id path int true "任务ID"
-// @Success 200 {object} gin.H
+// @Success 200 {object} map[string]interface{}
 // @Router /api/drafts/{task_id}/confirm-all [post]
 func (ctrl *DraftController) ConfirmAllDrafts(c *gin.Context) {
 	taskIDStr := c.Param("task_id")
@@ -216,7 +216,7 @@ func (ctrl *DraftController) ConfirmAllDrafts(c *gin.Context) {
 // @Accept json
 // @Param task_id path int true "任务ID"
 // @Param body body dto.RegenerateImagesRequest true "生成参数"
-// @Success 200 {object} gin.H
+// @Success 200 {object} map[string]interface{}
 // @Router /api/drafts/{task_id}/regenerate-images [post]
 func (ctrl *DraftController) RegenerateImages(c *gin.Context) {
 	taskIDStr := c.Param("task_id")
@@ -326,7 +326,7 @@ func (ctrl *DraftController) GetSupportedPlatforms(c *gin.Context) {
 // @Param page query int false "页码" default(1)
 // @Param page_size query int false "每页数量" default(20)
 // @Param status query string false "状态筛选"
-// @Success 200 {object} gin.H
+// @Success 200 {object} map[string]interface{}
 // @Router /api/drafts [get]
 func (ctrl *DraftController) ListDraftTasks(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))

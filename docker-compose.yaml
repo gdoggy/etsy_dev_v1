@@ -1,78 +1,155 @@
-version: '3.8'
-
 services:
-  # --- Go 应用服务 ---
+  # ==================== Go 业务应用 ====================
   app:
-    container_name: etsy_dev_v1_202512
+    container_name: ${GO_APP_CONTAINER_NAME}
+    platform: linux/amd64
     build:
       context: .
       dockerfile: Dockerfile
-    # 如果你要直接推送，建议这里写上完整的镜像名 (例如: your-dockerhub-user/etsy-api:v1)
-    # image: your-registry/etsy-api:latest
+      platforms:
+        - linux/amd64
     ports:
-      - "8080:8080"
+      - "${GO_APP_PORT}:${SERVER_PORT}"
     environment:
-      # 服务配置
-      - SERVER_PORT=8080
-
-      # 数据库配置
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DB_USER=etsy_admin
-      - DB_PASSWORD=1234
-      - DB_NAME=etsy_farm
-      - DB_TIMEZONE=Asia/Shanghai
-
-      # 万邦 API (1688数据抓取)
-      - ONEBOUND_API_KEY=${ONEBOUND_API_KEY:-}
-      - ONEBOUND_API_SECRET=${ONEBOUND_API_SECRET:-}
-
-      # Karrio
-      - KARRIO_BASE_URL=http://localhost:5002
-      - KARRIO_API_KEY=api_key
-
-      # Google Gemini AI
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-
-      # 云存储配置 (S3/COS)
-      - STORAGE_PROVIDER=${STORAGE_PROVIDER:-s3}
-      - AWS_BUCKET=${AWS_BUCKET:-}
-      - AWS_REGION=${AWS_REGION:-}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - AWS_CDN_DOMAIN=${AWS_CDN_DOMAIN:-}
-      - STORAGE_BASE_PATH=${STORAGE_BASE_PATH:-etsy-erp}
+      - TZ=${TZ}
+      - SERVER_PORT=${SERVER_PORT}
+      # 数据库连接
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DB_TIMEZONE=${TZ}
+      # API 相关
+      - ONEBOUND_API_KEY=${ONEBOUND_API_KEY}
+      - ONEBOUND_API_SECRET=${ONEBOUND_API_SECRET}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      # Karrio 连接
+      - KARRIO_BASE_URL=${KARRIO_BASE_URL}
+      - KARRIO_API_KEY=${KARRIO_API_KEY}
+      # 通用云存储
+      - STORAGE_PROVIDER=${STORAGE_PROVIDER}
+      - STORAGE_ENDPOINT=${STORAGE_ENDPOINT}
+      - STORAGE_REGION=${STORAGE_REGION}
+      - STORAGE_ACCESS_KEY=${STORAGE_ACCESS_KEY}
+      - STORAGE_SECRET_KEY=${STORAGE_SECRET_KEY}
+      - STORAGE_BUCKET=${STORAGE_BUCKET}
+      - STORAGE_CDN_DOMAIN=${STORAGE_CDN_DOMAIN}
+      - STORAGE_BASE_PATH=${STORAGE_BASE_PATH}
     depends_on:
-      - db
+      db:
+        condition: service_started
+      karrio-server:
+        condition: service_healthy
     networks:
       - etsy-net
     restart: on-failure
 
-  # --- PostgreSQL 数据库服务 ---
+  # ==================== 业务数据库 ====================
   db:
     image: postgres:16-alpine
-    container_name: etsy_pg_dev
-    restart: always
-    environment:
-      - POSTGRES_USER=etsy_admin
-      - POSTGRES_PASSWORD=1234
-      - POSTGRES_DB=etsy_farm
-      - TZ=Asia/Shanghai      # 修改 Linux 容器系统时间
-      - PGTZ=Asia/Shanghai    # 修改 Postgres 默认服务时区
+    container_name: ${ETSY_DB_HOST}
     ports:
-      # docker 5432 映射到 Mac 的 5432
-      - "5432:5432"
+      - "5432:5432" # 本地开发，docker 暴露端口
+    environment:
+      - POSTGRES_USER=${ETSY_DB_USER}
+      - POSTGRES_PASSWORD=${ETSY_DB_PASSWORD}
+      - POSTGRES_DB=${ETSY_DB_NAME}
+      - TZ=${TZ}
+      - PGTZ=${PGTZ}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ETSY_DB_USER} -d ${ETSY_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 2
     volumes:
-      # 数据持久化：确保容器删除后数据还在
-      - pg_data:/var/lib/postgresql/data
+      - etsy_pg_data:/var/lib/postgresql/data
     networks:
       - etsy-net
 
-# --- 网络定义 ---
+  # ==================== Karrio 数据库 ====================
+  karrio-db:
+    image: postgres:16-alpine
+    container_name: ${KARRIO_DB_HOST}
+    environment:
+      - POSTGRES_DB=${KARRIO_DB_NAME}
+      - POSTGRES_USER=${KARRIO_DB_USER}
+      - POSTGRES_PASSWORD=${KARRIO_DB_PASSWORD}
+      - TZ=${TZ}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${KARRIO_DB_USER} -d ${KARRIO_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 2
+    volumes:
+      - karrio_db_data:/var/lib/postgresql/data
+    networks:
+      - etsy-net
+
+  # ==================== Karrio Redis ====================
+  karrio-redis:
+    image: redis:8-alpine
+    container_name: ${KARRIO_REDIS_HOST}
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 2
+    volumes:
+      - karrio_redis_data:/data
+    networks:
+      - etsy-net
+    restart: on-failure
+
+  # ==================== Karrio Server (API) ====================
+  karrio-server:
+    image: karrio/server:2025.5rc23
+    container_name: ${KARRIO_CONTAINER_NAME}
+    platform: linux/amd64
+    ports:
+      - "${KARRIO_PORT}:5002"
+    environment:
+      # 数据库
+      - DATABASE_HOST=${KARRIO_DB_HOST}
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=${KARRIO_DB_NAME}
+      - DATABASE_USERNAME=${KARRIO_DB_USER}
+      - DATABASE_PASSWORD=${KARRIO_DB_PASSWORD}
+      # Redis
+      - REDIS_HOST=${KARRIO_REDIS_HOST}
+      - REDIS_PORT=${KARRIO_REDIS_PORT}
+      # 安全
+      - SECRET_KEY=${KARRIO_SECRET_KEY}
+      - ALLOWED_HOSTS=*
+      # 单容器模式：Server 内置 Worker（推荐小规模部署）
+      - DEBUG_MODE=${KARRIO_DEBUG_MODE:-False}
+      - DETACHED_WORKER=False
+      - KARRIO_WORKERS=${KARRIO_WORKERS:-2}
+      # Webhook 回调 ERP
+      - WEBHOOK_URL=${KARRIO_WEBHOOK_URL}
+      # 时区
+      - TZ=${TZ}
+    depends_on:
+      karrio-db:
+        condition: service_started
+      karrio-redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/"]
+      interval: 30s
+      timeout: 10s
+      retries: 2
+      start_period: 120s
+    networks:
+      - etsy-net
+    restart: on-failure
+
 networks:
   etsy-net:
     driver: bridge
 
-# --- 数据卷定义 ---
 volumes:
-  pg_data:
+  etsy_pg_data:
+  karrio_db_data:
+  karrio_redis_data:
